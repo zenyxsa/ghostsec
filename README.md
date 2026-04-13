@@ -73,4 +73,4 @@ python ghostsec.py log /var/log/auth.log
 *This tool is intended for ethical hacking, educational purposes, and authorized auditing only. The developers assume no liability for misuse.*
 
 ---
-**Made with 💻 by [zenyxsa]**
+**Made by [zenyxsa]**
