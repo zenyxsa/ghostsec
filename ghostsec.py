@@ -27,11 +27,11 @@ except ImportError:
 
 def print_banner():
     """Prints the Hacker-style ASCII art banner."""
-    banner = f"""{Fore.GREEN}{Style.BRIGHT}
+    banner = fr"""{Fore.GREEN}{Style.BRIGHT}
    ____ _               _   ____           
   / ___| |__   ___  ___| |_|  _ \  ___ ___ 
  | |  _| '_ \ / _ \/ __| __| | | |/ _ / __|
- | |_| | | | | (_) \__ \ |_| |_| |  __\__ \\
+ | |_| | | | | (_) \__ \ |_| |_| |  __\__ \
   \____|_| |_|\___/|___/\__|____/ \___|___/
                                            
     Python Cybersecurity Automation Tool v1.0
@@ -222,6 +222,17 @@ def password_strength(password):
         for error in feedback:
             print(f"  - {error}")
 
+def get_processor():
+    if platform.system() == "Linux":
+        try:
+            with open("/proc/cpuinfo", "r") as cpuinfo:
+                for line in cpuinfo:
+                    if line.startswith(("model name", "Hardware")):
+                        return line.split(":", 1)[1].strip()
+        except (OSError, IndexError):
+            pass
+    return platform.processor() or "Unknown"
+
 def system_info(save_file=None):
     """Gathers OS and network information of the currently running machine."""
     print(f"\n{Fore.YELLOW}[*] Gathering Target System Information...{Style.RESET_ALL}")
@@ -232,7 +243,7 @@ def system_info(save_file=None):
             'OS Release': platform.release(),
             'OS Version': platform.version(),
             'Architecture': platform.machine(),
-            'Processor': platform.processor(),
+            'Processor': get_processor(),
             'Python Version': platform.python_version(),
             'Hostname': socket.gethostname(),
             'Local IP Address': socket.gethostbyname(socket.gethostname()),
