@@ -13,6 +13,13 @@ import ssl
 import urllib.error
 import urllib.parse
 import urllib.request
+
+try:
+    import phonenumbers
+    from phonenumbers import NumberParseException
+except ImportError:
+    phonenumbers = None
+    NumberParseException = ValueError
 from datetime import datetime
 from ipaddress import ip_address
 
@@ -379,6 +386,57 @@ def breach_lookup(account):
         "breaches": safe,
         "source": "HIBP",
     }
+
+def normalize_phone(value, default_region="IN"):
+    """Normalize and validate a phone number locally."""
+    value = value.strip()
+    if not value:
+        raise ValueError("Phone number cannot be empty.")
+    if phonenumbers is None:
+        raise RuntimeError("The phonenumbers package is required for phone OSINT.")
+    try:
+        parsed = phonenumbers.parse(value, default_region if not value.startswith("+") else None)
+    except NumberParseException as exc:
+        raise ValueError(f"Invalid phone number: {exc}") from exc
+    if not phonenumbers.is_possible_number(parsed):
+        raise ValueError("Phone number has an impossible length or prefix.")
+    number_type = phonenumbers.number_type(parsed)
+    names = {
+        phonenumbers.PhoneNumberType.MOBILE: "mobile",
+        phonenumbers.PhoneNumberType.FIXED_LINE: "fixed line",
+        phonenumbers.PhoneNumberType.FIXED_LINE_OR_MOBILE: "fixed line or mobile",
+        phonenumbers.PhoneNumberType.VOIP: "VoIP",
+        phonenumbers.PhoneNumberType.TOLL_FREE: "toll-free",
+    }
+    return {
+        "input": value,
+        "phone": phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164),
+        "valid": phonenumbers.is_valid_number(parsed),
+        "region": phonenumbers.region_code_for_number(parsed) or "Unknown",
+        "number_type": names.get(number_type, "unknown"),
+    }
+
+
+def phone_osint_lookup(phone, default_region="IN"):
+    """Perform local phone validation; remote breach lookup is opt-in."""
+    info = normalize_phone(phone, default_region)
+    return {
+        **info,
+        "status": "valid" if info["valid"] else "invalid",
+        "breach_lookup": "disabled",
+        "note": "Phone breach data requires an explicitly configured provider.",
+    }
+
+
+def print_phone_osint_report(result):
+    print("\n=== GhostSec Phone Number OSINT Report ===")
+    print(f"Input: {result['input']}")
+    print(f"E.164: {result['phone']}")
+    print(f"Valid: {result['valid']}")
+    print(f"Region: {result['region']}")
+    print(f"Number type: {result['number_type']}")
+    print("\nBreach lookup: disabled")
+    print("Phone breach data requires an explicitly configured provider.")
 
 def print_url_report(result):
     print("\n=== GhostSec URL Risk Report ===")
