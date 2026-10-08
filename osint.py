@@ -28,6 +28,30 @@ SUSPICIOUS_TLDS = {
     "zip", "mov", "click", "top", "xyz", "work", "buzz", "cam", "rest",
 }
 
+LEGITIMATE_BRAND_DOMAINS = {
+    "microsoft": {"microsoft.com", "microsoftonline.com"},
+    "outlook": {"outlook.com", "microsoft.com", "microsoftonline.com"},
+    "office365": {"office.com", "microsoft.com", "microsoftonline.com"},
+    "office": {"office.com", "microsoft.com", "microsoftonline.com"},
+    "paypal": {"paypal.com"},
+    "apple": {"apple.com"},
+    "icloud": {"icloud.com", "apple.com"},
+    "google": {"google.com"},
+    "gmail": {"gmail.com", "google.com"},
+    "facebook": {"facebook.com", "meta.com"},
+    "instagram": {"instagram.com", "meta.com"},
+    "amazon": {"amazon.com", "amazon.in"},
+    "netflix": {"netflix.com"},
+    "steam": {"steampowered.com", "steamcommunity.com"},
+    "discord": {"discord.com"},
+    "docusign": {"docusign.com"},
+    "dropbox": {"dropbox.com"},
+    "coinbase": {"coinbase.com"},
+    "binance": {"binance.com"},
+    "linkedin": {"linkedin.com"},
+    "adobe": {"adobe.com"},
+}
+
 SUSPICIOUS_WORDS = {
     "login", "verify", "verification", "secure", "account", "update",
     "wallet", "password", "signin", "unlock", "bonus", "gift", "claim",
@@ -105,18 +129,31 @@ def analyze_url(url, check_urlhaus=True):
 
         labels = [label for label in host.split(".") if label]
         subdomain = ".".join(labels[:-2])
+        registrable_domain = ".".join(labels[-2:]).lower() if len(labels) >= 2 else host.lower()
         brand_matches = sorted(
             brand for brand in BRAND_TERMS
             if brand in subdomain.lower() or (
                 len(labels) >= 2 and brand in labels[-2].lower()
             )
         )
+        legitimate_brands = sorted(
+            brand for brand in brand_matches
+            if registrable_domain in LEGITIMATE_BRAND_DOMAINS.get(brand, set())
+        )
+        impersonated_brands = sorted(
+            brand for brand in brand_matches if brand not in legitimate_brands
+        )
         if brand_matches:
             findings.append(
                 "Hostname contains brand/service names commonly targeted for impersonation: "
                 + ", ".join(brand_matches) + "."
             )
-            score += min(35, 20 + max(0, len(brand_matches) - 1) * 5)
+        if impersonated_brands:
+            findings.append(
+                "Brand name appears on a domain not recognized as an official domain: "
+                + ", ".join(impersonated_brands) + "."
+            )
+            score += min(45, 30 + max(0, len(impersonated_brands) - 1) * 5)
 
         if "xn--" in host.lower():
             findings.append("Hostname contains punycode, which can be used in look-alike domains.")
@@ -136,7 +173,7 @@ def analyze_url(url, check_urlhaus=True):
             lure_matches = sorted(
                 word for word in SUSPICIOUS_WORDS if word in subdomain_lower
             )
-            if brand_matches and lure_matches:
+            if impersonated_brands and lure_matches:
                 findings.append(
                     "Hostname combines a recognizable brand with credential/lure terms: "
                     + ", ".join(lure_matches) + "."
