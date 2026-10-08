@@ -1,1 +1,2 @@
 colorama>=0.4.6
+phonenumbers>=9.0.0
