@@ -311,6 +311,7 @@ def interactive_menu():
         print("  5) Simple Log Analyzer")
         print("  6) URL Risk Detector")
         print("  7) Breach Exposure OSINT")
+        print("  8) Phone Number OSINT")
         print("  0) Exit\n")
         
         choice = input(f"{Fore.RED}zenyxsa@kali{Style.RESET_ALL}:{Fore.BLUE}~{Style.RESET_ALL}# ").strip()
@@ -428,7 +429,7 @@ def main():
     phone_parser = subparsers.add_parser('phone', help='Phone number OSINT')
     phone_parser.add_argument('number', help='Phone number, preferably with country code')
     phone_parser.add_argument('--region', default='IN', help='Default region when +country code is omitted')
-    phone_parser.add_argument('-o', '--output', help='Save output (supports .txt or .json')
+    phone_parser.add_argument('-o', '--output', help='Save output (supports .txt or .json)')
 
     args = parser.parse_args()
 
