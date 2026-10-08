@@ -10,7 +10,7 @@ import threading
 from datetime import datetime
 import json
 import platform
-from ghostsec.osint import analyze_url, breach_lookup, print_url_report, print_breach_report
+from osint import analyze_url, breach_lookup, print_url_report, print_breach_report
 
 # Attempt to load colorama for hacker-style colored terminal output
 try:
