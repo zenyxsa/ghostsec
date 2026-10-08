@@ -400,6 +400,7 @@ def normalize_phone(value, default_region="IN"):
         raise ValueError(f"Invalid phone number: {exc}") from exc
     if not phonenumbers.is_possible_number(parsed):
         raise ValueError("Phone number has an impossible length or prefix.")
+
     number_type = phonenumbers.number_type(parsed)
     names = {
         phonenumbers.PhoneNumberType.MOBILE: "mobile",
@@ -408,23 +409,42 @@ def normalize_phone(value, default_region="IN"):
         phonenumbers.PhoneNumberType.VOIP: "VoIP",
         phonenumbers.PhoneNumberType.TOLL_FREE: "toll-free",
     }
+    valid = phonenumbers.is_valid_number(parsed)
+    e164 = phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
+    region = phonenumbers.region_code_for_number(parsed) or "Unknown"
+
+    # Bundled datasets: the number is not sent to a remote service.
+    carrier = phonenumbers.carrier.name_for_number(parsed, "en") or "Unknown"
+    location = phonenumbers.geocoder.description_for_number(parsed, "en") or "Unknown"
+    timezones = list(phonenumbers.timezone.time_zones_for_number(parsed))
+
     return {
         "input": value,
-        "phone": phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164),
-        "valid": phonenumbers.is_valid_number(parsed),
-        "region": phonenumbers.region_code_for_number(parsed) or "Unknown",
+        "phone": e164,
+        "valid": valid,
+        "region": region,
         "number_type": names.get(number_type, "unknown"),
+        "carrier": carrier,
+        "location": location,
+        "timezones": timezones,
     }
 
 
 def phone_osint_lookup(phone, default_region="IN"):
-    """Perform local phone validation; remote breach lookup is opt-in."""
+    """Perform privacy-preserving phone OSINT using local metadata."""
     info = normalize_phone(phone, default_region)
     return {
         **info,
         "status": "valid" if info["valid"] else "invalid",
-        "breach_lookup": "disabled",
-        "note": "Phone breach data requires an explicitly configured provider.",
+        "sources": [
+            "python-phonenumbers numbering metadata",
+            "local carrier/geocoder/timezone datasets",
+        ],
+        "breach_lookup": "unavailable",
+        "note": (
+            "No verified free phone-breach API is queried. "
+            "The number is not uploaded to a breach database by default."
+        ),
     }
 
 
@@ -435,8 +455,14 @@ def print_phone_osint_report(result):
     print(f"Valid: {result['valid']}")
     print(f"Region: {result['region']}")
     print(f"Number type: {result['number_type']}")
-    print("\nBreach lookup: disabled")
-    print("Phone breach data requires an explicitly configured provider.")
+    print(f"Carrier: {result['carrier']}")
+    print(f"Location: {result['location']}")
+    print("Time zones: " + (", ".join(result["timezones"]) if result["timezones"] else "Unknown"))
+    print("\nSources:")
+    for source in result["sources"]:
+        print(f"  - {source}")
+    print("\nBreach lookup: unavailable")
+    print(result["note"])
 
 def print_url_report(result):
     print("\n=== GhostSec URL Risk Report ===")
