@@ -259,22 +259,76 @@ def analyze_url(url, check_urlhaus=True):
     }
 
 
+def _xposedornot_lookup(account):
+    """Check XposedOrNot's free community API for breach metadata."""
+    endpoint = (
+        "https://api.xposedornot.com/v1/check-email/"
+        + urllib.parse.quote(account, safe="")
+        + "?details=true"
+    )
+    try:
+        raw = _request(endpoint, headers={"User-Agent": "GhostSec/1.2"})
+        data = json.loads(raw)
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            return {"status": "not_found", "account": account, "breaches": [], "source": "XposedOrNot"}
+        if exc.code == 429:
+            return {"status": "error", "message": "XposedOrNot rate limit reached. Try again later.", "source": "XposedOrNot"}
+        return {"status": "error", "message": f"XposedOrNot returned HTTP {exc.code}.", "source": "XposedOrNot"}
+    except Exception as exc:
+        return {"status": "error", "message": str(exc), "source": "XposedOrNot"}
+
+    raw_breaches = data.get("breaches", [])
+    if raw_breaches and isinstance(raw_breaches[0], list):
+        raw_breaches = raw_breaches[0]
+
+    breaches = []
+    for item in raw_breaches or []:
+        if isinstance(item, str):
+            breaches.append({
+                "name": item,
+                "title": item,
+                "domain": None,
+                "breach_date": None,
+                "pwn_count": None,
+                "data_classes": [],
+                "is_verified": None,
+                "is_sensitive": None,
+            })
+        elif isinstance(item, dict):
+            breaches.append({
+                "name": item.get("breachID") or item.get("name"),
+                "title": item.get("title") or item.get("breachID") or item.get("name"),
+                "domain": item.get("domain"),
+                "breach_date": item.get("breachedDate"),
+                "pwn_count": item.get("exposedRecords"),
+                "data_classes": item.get("exposedData", []),
+                "is_verified": item.get("verified"),
+                "is_sensitive": item.get("sensitive"),
+            })
+
+    return {
+        "status": "found" if breaches else "not_found",
+        "account": account,
+        "breach_count": len(breaches),
+        "breaches": breaches,
+        "source": "XposedOrNot",
+    }
+
+
 def breach_lookup(account):
-    """Check HIBP for breach metadata using HIBP_API_KEY.
+    """Check an account for public breach exposure.
 
-    HIBP's response is intentionally reduced to client-safe metadata.
-    No passwords, hashes, tokens, or raw compromised records are returned.
+    HIBP is used when HIBP_API_KEY is configured. Otherwise GhostSec falls
+    back to XposedOrNot's free, keyless community API.
     """
-    api_key = os.getenv("HIBP_API_KEY")
-    if not api_key:
-        return {
-            "status": "not_configured",
-            "message": "Set HIBP_API_KEY to enable breach exposure checks.",
-        }
-
     account = account.strip()
     if not account:
         raise ValueError("Account/email cannot be empty.")
+
+    api_key = os.getenv("HIBP_API_KEY")
+    if not api_key:
+        return _xposedornot_lookup(account)
 
     endpoint = (
         "https://haveibeenpwned.com/api/v3/breachedaccount/"
@@ -283,7 +337,7 @@ def breach_lookup(account):
     )
     headers = {
         "hibp-api-key": api_key,
-        "user-agent": "GhostSec/1.1",
+        "user-agent": "GhostSec/1.2",
     }
 
     try:
@@ -291,14 +345,17 @@ def breach_lookup(account):
         breaches = json.loads(raw)
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
-            return {"status": "not_found", "account": account, "breaches": []}
-        if exc.code == 401:
-            return {"status": "error", "message": "HIBP API key was rejected."}
-        if exc.code == 429:
-            return {"status": "error", "message": "HIBP rate limit reached."}
-        return {"status": "error", "message": f"HIBP returned HTTP {exc.code}."}
+            return {"status": "not_found", "account": account, "breaches": [], "source": "HIBP"}
+        if exc.code in {401, 429}:
+            fallback = _xposedornot_lookup(account)
+            if fallback.get("status") in {"found", "not_found"}:
+                fallback["hibp_fallback"] = "HIBP was unavailable, so XposedOrNot was used."
+                return fallback
+            message = "HIBP API key was rejected." if exc.code == 401 else "HIBP rate limit reached."
+            return {"status": "error", "message": message, "source": "HIBP"}
+        return {"status": "error", "message": f"HIBP returned HTTP {exc.code}.", "source": "HIBP"}
     except Exception as exc:
-        return {"status": "error", "message": str(exc)}
+        return {"status": "error", "message": str(exc), "source": "HIBP"}
 
     safe = []
     for breach in breaches:
@@ -320,8 +377,8 @@ def breach_lookup(account):
         "account": account,
         "breach_count": len(safe),
         "breaches": safe,
+        "source": "HIBP",
     }
-
 
 def print_url_report(result):
     print("\n=== GhostSec URL Risk Report ===")
@@ -346,6 +403,10 @@ def print_breach_report(result):
         return
 
     print(f"Account: {result['account']}")
+    if result.get("source"):
+        print(f"Source: {result['source']}")
+    if result.get("hibp_fallback"):
+        print(f"Note: {result['hibp_fallback']}")
     print(f"Breaches found: {result['breach_count']}")
     for breach in result["breaches"]:
         print(f"\n  {breach['title'] or breach['name']}")

@@ -22,9 +22,9 @@ cd ghostsec
 ```
 
 ### 2. Install Requirements
-Colorama is used to generate the cool green, red, and blue hacker terminal aesthetic.
+Install the Python dependency from the requirements file:
 ```bash
-pip install colorama
+python -m pip install -r requirements.txt
 ```
 
 ## Usage
@@ -84,15 +84,23 @@ The result is an **indicator-based risk assessment**, not a guarantee that a URL
 
 ### 7. Breach Exposure OSINT
 
-Check whether an email/account identifier appears in publicly reported breaches through the Have I Been Pwned API. GhostSec reports client-safe breach metadata such as breach name, date, affected record count, and exposed data categories.
+Check whether an email/account identifier appears in publicly reported breaches. GhostSec uses the free, keyless XposedOrNot community API by default, and can use Have I Been Pwned when `HIBP_API_KEY` is configured. Results contain client-safe breach metadata such as breach name, date, affected record count, and exposed data categories.
 
-Set your HIBP API key in the environment:
+Free mode (no API key required):
+
+```bash
+python ghostsec.py breach user@example.com
+python ghostsec.py breach user@example.com -o breach_report.json
+```
+
+Optional HIBP mode:
 
 ```bash
 export HIBP_API_KEY="your_api_key"
 python ghostsec.py breach user@example.com
-python ghostsec.py breach user@example.com -o breach_report.json
 ```
+
+If HIBP is unavailable or rejects the configured key, GhostSec automatically falls back to XposedOrNot when possible.
 
 GhostSec intentionally does **not** retrieve, display, or store leaked passwords, password hashes, session tokens, or credential dumps.
 
