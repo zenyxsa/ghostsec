@@ -13,6 +13,13 @@ import ssl
 import urllib.error
 import urllib.parse
 import urllib.request
+
+try:
+    import phonenumbers
+    from phonenumbers import NumberParseException, carrier, geocoder, timezone
+except ImportError:
+    phonenumbers = None
+    NumberParseException = ValueError
 from datetime import datetime
 from ipaddress import ip_address
 
@@ -379,6 +386,83 @@ def breach_lookup(account):
         "breaches": safe,
         "source": "HIBP",
     }
+
+def normalize_phone(value, default_region="IN"):
+    """Normalize and validate a phone number locally."""
+    value = value.strip()
+    if not value:
+        raise ValueError("Phone number cannot be empty.")
+    if phonenumbers is None:
+        raise RuntimeError("The phonenumbers package is required for phone OSINT.")
+    try:
+        parsed = phonenumbers.parse(value, default_region if not value.startswith("+") else None)
+    except NumberParseException as exc:
+        raise ValueError(f"Invalid phone number: {exc}") from exc
+    if not phonenumbers.is_possible_number(parsed):
+        raise ValueError("Phone number has an impossible length or prefix.")
+
+    number_type = phonenumbers.number_type(parsed)
+    names = {
+        phonenumbers.PhoneNumberType.MOBILE: "mobile",
+        phonenumbers.PhoneNumberType.FIXED_LINE: "fixed line",
+        phonenumbers.PhoneNumberType.FIXED_LINE_OR_MOBILE: "fixed line or mobile",
+        phonenumbers.PhoneNumberType.VOIP: "VoIP",
+        phonenumbers.PhoneNumberType.TOLL_FREE: "toll-free",
+    }
+    valid = phonenumbers.is_valid_number(parsed)
+    e164 = phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
+    region = phonenumbers.region_code_for_number(parsed) or "Unknown"
+
+    # Bundled datasets: the number is not sent to a remote service.
+    carrier_name = carrier.name_for_number(parsed, "en") or "Unknown"
+    location = geocoder.description_for_number(parsed, "en") or "Unknown"
+    timezones = list(timezone.time_zones_for_number(parsed))
+
+    return {
+        "input": value,
+        "phone": e164,
+        "valid": valid,
+        "region": region,
+        "number_type": names.get(number_type, "unknown"),
+        "carrier": carrier_name,
+        "location": location,
+        "timezones": timezones,
+    }
+
+
+def phone_osint_lookup(phone, default_region="IN"):
+    """Perform privacy-preserving phone OSINT using local metadata."""
+    info = normalize_phone(phone, default_region)
+    return {
+        **info,
+        "status": "valid" if info["valid"] else "invalid",
+        "sources": [
+            "python-phonenumbers numbering metadata",
+            "local carrier/geocoder/timezone datasets",
+        ],
+        "breach_lookup": "unavailable",
+        "note": (
+            "No verified free phone-breach API is queried. "
+            "The number is not uploaded to a breach database by default."
+        ),
+    }
+
+
+def print_phone_osint_report(result):
+    print("\n=== GhostSec Phone Number OSINT Report ===")
+    print(f"Input: {result['input']}")
+    print(f"E.164: {result['phone']}")
+    print(f"Valid: {result['valid']}")
+    print(f"Region: {result['region']}")
+    print(f"Number type: {result['number_type']}")
+    print(f"Carrier: {result['carrier']}")
+    print(f"Location: {result['location']}")
+    print("Time zones: " + (", ".join(result["timezones"]) if result["timezones"] else "Unknown"))
+    print("\nSources:")
+    for source in result["sources"]:
+        print(f"  - {source}")
+    print("\nBreach lookup: unavailable")
+    print(result["note"])
 
 def print_url_report(result):
     print("\n=== GhostSec URL Risk Report ===")

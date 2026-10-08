@@ -10,7 +10,7 @@ import threading
 from datetime import datetime
 import json
 import platform
-from osint import analyze_url, breach_lookup, print_url_report, print_breach_report
+from osint import analyze_url, breach_lookup, print_url_report, print_breach_report, phone_osint_lookup, print_phone_osint_report
 
 # Attempt to load colorama for hacker-style colored terminal output
 try:
@@ -311,6 +311,7 @@ def interactive_menu():
         print("  5) Simple Log Analyzer")
         print("  6) URL Risk Detector")
         print("  7) Breach Exposure OSINT")
+        print("  8) Phone Number OSINT")
         print("  0) Exit\n")
         
         choice = input(f"{Fore.RED}zenyxsa@kali{Style.RESET_ALL}:{Fore.BLUE}~{Style.RESET_ALL}# ").strip()
@@ -360,6 +361,17 @@ def interactive_menu():
             save_prompt = input("Save report to file? (leave empty to skip): ").strip()
             if save_prompt:
                 save_results("Breach Exposure OSINT", result, save_prompt)
+
+        elif choice == '8':
+            phone = input("Enter phone number (e.g. +91 9876543210): ").strip()
+            try:
+                result = phone_osint_lookup(phone)
+                print_phone_osint_report(result)
+                save_prompt = input("Save report to file? (leave empty to skip): ").strip()
+                if save_prompt:
+                    save_results("Phone Number OSINT", result, save_prompt)
+            except (ValueError, RuntimeError) as exc:
+                print(f"{Fore.RED}[!] {exc}{Style.RESET_ALL}")
 
         elif choice == '0':
             print(f"\n{Fore.GREEN}[*] Shutting down. Stay stealthy!{Style.RESET_ALL}")
@@ -413,6 +425,12 @@ def main():
     breach_parser.add_argument('-o', '--output', help='Save output (supports .txt or .json)')
 
 
+    # 8. Phone Number OSINT
+    phone_parser = subparsers.add_parser('phone', help='Phone number OSINT')
+    phone_parser.add_argument('number', help='Phone number, preferably with country code')
+    phone_parser.add_argument('--region', default='IN', help='Default region when +country code is omitted')
+    phone_parser.add_argument('-o', '--output', help='Save output (supports .txt or .json)')
+
     args = parser.parse_args()
 
     # Drop into interactive menu if no arguments are passed or -i is used
@@ -442,6 +460,14 @@ def main():
         print_breach_report(result)
         if args.output:
             save_results('Breach Exposure OSINT', result, args.output)
+    elif args.command == 'phone':
+        try:
+            result = phone_osint_lookup(args.number, default_region=args.region)
+            print_phone_osint_report(result)
+            if args.output:
+                save_results('Phone Number OSINT', result, args.output)
+        except (ValueError, RuntimeError) as exc:
+            print(f"{Fore.RED}[!] {exc}{Style.RESET_ALL}")
 
 if __name__ == "__main__":
     main()
