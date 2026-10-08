@@ -16,7 +16,7 @@ import urllib.request
 
 try:
     import phonenumbers
-    from phonenumbers import NumberParseException
+    from phonenumbers import NumberParseException, carrier, geocoder, timezone
 except ImportError:
     phonenumbers = None
     NumberParseException = ValueError
@@ -414,9 +414,9 @@ def normalize_phone(value, default_region="IN"):
     region = phonenumbers.region_code_for_number(parsed) or "Unknown"
 
     # Bundled datasets: the number is not sent to a remote service.
-    carrier = phonenumbers.carrier.name_for_number(parsed, "en") or "Unknown"
-    location = phonenumbers.geocoder.description_for_number(parsed, "en") or "Unknown"
-    timezones = list(phonenumbers.timezone.time_zones_for_number(parsed))
+    carrier_name = carrier.name_for_number(parsed, "en") or "Unknown"
+    location = geocoder.description_for_number(parsed, "en") or "Unknown"
+    timezones = list(timezone.time_zones_for_number(parsed))
 
     return {
         "input": value,
@@ -424,7 +424,7 @@ def normalize_phone(value, default_region="IN"):
         "valid": valid,
         "region": region,
         "number_type": names.get(number_type, "unknown"),
-        "carrier": carrier,
+        "carrier": carrier_name,
         "location": location,
         "timezones": timezones,
     }
