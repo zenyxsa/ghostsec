@@ -18,6 +18,16 @@ from ipaddress import ip_address
 
 
 URL_RE = re.compile(r"^https?://", re.I)
+BRAND_TERMS = {
+    "microsoft", "outlook", "office365", "office", "paypal", "apple",
+    "icloud", "google", "gmail", "facebook", "instagram", "amazon",
+    "netflix", "steam", "discord", "docusign", "dropbox", "coinbase",
+    "binance", "linkedin", "adobe",
+}
+SUSPICIOUS_TLDS = {
+    "zip", "mov", "click", "top", "xyz", "work", "buzz", "cam", "rest",
+}
+
 SUSPICIOUS_WORDS = {
     "login", "verify", "verification", "secure", "account", "update",
     "wallet", "password", "signin", "unlock", "bonus", "gift", "claim",
@@ -92,6 +102,42 @@ def analyze_url(url, check_urlhaus=True):
         if host.count(".") >= 4:
             findings.append("Deeply nested hostname/subdomain structure.")
             score += 10
+
+        labels = [label for label in host.split(".") if label]
+        subdomain = ".".join(labels[:-2])
+        brand_matches = sorted(
+            brand for brand in BRAND_TERMS
+            if brand in subdomain.lower() or (
+                len(labels) >= 2 and brand in labels[-2].lower()
+            )
+        )
+        if brand_matches:
+            findings.append(
+                "Hostname contains brand/service names commonly targeted for impersonation: "
+                + ", ".join(brand_matches) + "."
+            )
+            score += min(35, 20 + max(0, len(brand_matches) - 1) * 5)
+
+        if "xn--" in host.lower():
+            findings.append("Hostname contains punycode, which can be used in look-alike domains.")
+            score += 25
+
+        if any(label.count("-") >= 2 for label in labels):
+            findings.append("Hostname contains heavily hyphenated labels, a pattern sometimes used in look-alike domains.")
+            score += 10
+
+        tld = labels[-1].lower() if labels else ""
+        if tld in SUSPICIOUS_TLDS:
+            findings.append(f"Uses a TLD frequently seen in disposable or abuse-heavy registrations: .{tld}.")
+            score += 10
+
+        if subdomain:
+            words = set(re.split(r"[-.]", subdomain.lower()))
+            if words & BRAND_TERMS and words & SUSPICIOUS_WORDS:
+                findings.append(
+                    "Subdomain combines a recognizable brand with a credential/lure term."
+                )
+                score += 25
 
         try:
             socket.gethostbyname(host)
