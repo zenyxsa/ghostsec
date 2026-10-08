@@ -308,3 +308,10 @@ You are free to use, modify, study, and distribute the project in accordance wit
 <p align="center">
   <strong>GhostSec</strong> • Built by <a href="https://github.com/zenyxsa">zenyxsa</a>
 </p>
+**Made by [zenyxsa]**
+
+<p align="center">
+
+<p align="center">
+  <img src="assets/ghostsec-banner.png" alt="GhostSec cyberpunk anime banner" width="100%">
+</p>
