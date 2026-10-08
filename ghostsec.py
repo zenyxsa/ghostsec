@@ -10,6 +10,7 @@ import threading
 from datetime import datetime
 import json
 import platform
+from osint import analyze_url, breach_lookup, print_url_report, print_breach_report
 
 # Attempt to load colorama for hacker-style colored terminal output
 try:
@@ -308,6 +309,8 @@ def interactive_menu():
         print("  3) Password Strength Checker")
         print("  4) System Information Gatherer")
         print("  5) Simple Log Analyzer")
+        print("  6) URL Risk Detector")
+        print("  7) Breach Exposure OSINT")
         print("  0) Exit\n")
         
         choice = input(f"{Fore.RED}zenyxsa@kali{Style.RESET_ALL}:{Fore.BLUE}~{Style.RESET_ALL}# ").strip()
@@ -342,6 +345,22 @@ def interactive_menu():
             save_prompt = input("Save results to file? (leave empty to skip): ").strip()
             log_analyzer(logfile, save_prompt if save_prompt else None)
             
+        elif choice == '6':
+            target_url = input("Enter URL to analyze: ").strip()
+            result = analyze_url(target_url)
+            print_url_report(result)
+            save_prompt = input("Save report to file? (leave empty to skip): ").strip()
+            if save_prompt:
+                save_results("URL Risk Detector", result, save_prompt)
+
+        elif choice == '7':
+            account = input("Enter email/account identifier to check: ").strip()
+            result = breach_lookup(account)
+            print_breach_report(result)
+            save_prompt = input("Save report to file? (leave empty to skip): ").strip()
+            if save_prompt:
+                save_results("Breach Exposure OSINT", result, save_prompt)
+
         elif choice == '0':
             print(f"\n{Fore.GREEN}[*] Shutting down. Stay stealthy!{Style.RESET_ALL}")
             sys.exit(0)
@@ -382,6 +401,17 @@ def main():
     log_parser = subparsers.add_parser('log', help='Simple Log Analyzer Module')
     log_parser.add_argument('file', help='Target log file to analyze (.txt, .log)')
     log_parser.add_argument('-o', '--output', help='Save output (supports .txt or .json)')
+    # 6. URL Risk Detector
+    url_parser = subparsers.add_parser('url', help='URL safety and reputation analysis')
+    url_parser.add_argument('url', help='URL to analyze')
+    url_parser.add_argument('-o', '--output', help='Save output (supports .txt or .json)')
+    url_parser.add_argument('--no-urlhaus', action='store_true', help='Skip URLhaus reputation check')
+
+    # 7. Breach Exposure OSINT
+    breach_parser = subparsers.add_parser('breach', help='Check public breach exposure metadata')
+    breach_parser.add_argument('account', help='Email/account identifier')
+    breach_parser.add_argument('-o', '--output', help='Save output (supports .txt or .json)')
+
 
     args = parser.parse_args()
 
@@ -402,6 +432,16 @@ def main():
         system_info(args.output)
     elif args.command == 'log':
         log_analyzer(args.file, args.output)
+    elif args.command == 'url':
+        result = analyze_url(args.url, check_urlhaus=not args.no_urlhaus)
+        print_url_report(result)
+        if args.output:
+            save_results('URL Risk Detector', result, args.output)
+    elif args.command == 'breach':
+        result = breach_lookup(args.account)
+        print_breach_report(result)
+        if args.output:
+            save_results('Breach Exposure OSINT', result, args.output)
 
 if __name__ == "__main__":
     main()

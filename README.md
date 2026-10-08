@@ -69,6 +69,33 @@ python ghostsec.py sysinfo -o my_system_data.txt
 python ghostsec.py log /var/log/auth.log
 ```
 
+
+### 6. URL Risk Detector
+
+Analyze a URL using explainable indicators such as HTTP vs HTTPS, raw IP hosts, deceptive URL structure, suspicious lure terms, DNS resolution, and an optional URLhaus reputation lookup.
+
+```bash
+python ghostsec.py url https://example.com
+python ghostsec.py url https://example.com -o url_report.json
+python ghostsec.py url https://example.com --no-urlhaus
+```
+
+The result is an **indicator-based risk assessment**, not a guarantee that a URL is safe.
+
+### 7. Breach Exposure OSINT
+
+Check whether an email/account identifier appears in publicly reported breaches through the Have I Been Pwned API. GhostSec reports client-safe breach metadata such as breach name, date, affected record count, and exposed data categories.
+
+Set your HIBP API key in the environment:
+
+```bash
+export HIBP_API_KEY="your_api_key"
+python ghostsec.py breach user@example.com
+python ghostsec.py breach user@example.com -o breach_report.json
+```
+
+GhostSec intentionally does **not** retrieve, display, or store leaked passwords, password hashes, session tokens, or credential dumps.
+
 ## Disclaimer
 *This tool is intended for ethical hacking, educational purposes, and authorized auditing only. The developers assume no liability for misuse.*
 
