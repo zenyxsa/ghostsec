@@ -132,12 +132,16 @@ def analyze_url(url, check_urlhaus=True):
             score += 10
 
         if subdomain:
-            words = set(re.split(r"[-.]", subdomain.lower()))
-            if words & BRAND_TERMS and words & SUSPICIOUS_WORDS:
+            subdomain_lower = subdomain.lower()
+            lure_matches = sorted(
+                word for word in SUSPICIOUS_WORDS if word in subdomain_lower
+            )
+            if brand_matches and lure_matches:
                 findings.append(
-                    "Subdomain combines a recognizable brand with a credential/lure term."
+                    "Hostname combines a recognizable brand with credential/lure terms: "
+                    + ", ".join(lure_matches) + "."
                 )
-                score += 25
+                score += 30
 
         try:
             socket.gethostbyname(host)
