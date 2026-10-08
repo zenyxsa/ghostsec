@@ -29,7 +29,7 @@ def _request(url, data=None, headers=None, timeout=10):
     req = urllib.request.Request(
         url,
         data=data,
-        headers=headers or {"User-Agent": "GhostSec/1.1"},
+        headers=headers or {"User-Agent": "GhostSec/1.2"},
         method="POST" if data is not None else "GET",
     )
     with urllib.request.urlopen(req, timeout=timeout) as response:
@@ -99,7 +99,11 @@ def analyze_url(url, check_urlhaus=True):
             findings.append("Hostname did not resolve through the local DNS resolver.")
             score += 25
 
-    urlhaus = None
+    reputation = {
+        "urlhaus": None,
+        "phishtank": None,
+    }
+
     if check_urlhaus:
         try:
             payload = urllib.parse.urlencode({"url": url}).encode()
@@ -108,12 +112,44 @@ def analyze_url(url, check_urlhaus=True):
                 data=payload,
                 headers={"User-Agent": "GhostSec/1.1"},
             )
-            urlhaus = json.loads(raw)
-            if urlhaus.get("query_status") == "ok":
+            reputation["urlhaus"] = json.loads(raw)
+            if reputation["urlhaus"].get("query_status") == "ok":
                 findings.append("URL is listed by URLhaus as a known malicious URL.")
                 score += 70
         except Exception as exc:
-            urlhaus = {"error": str(exc)}
+            reputation["urlhaus"] = {"error": str(exc)}
+
+    # PhishTank checks the URL string against its community-verified phishing
+    # database. This does not visit the target URL.
+    try:
+        payload = urllib.parse.urlencode({
+            "url": url,
+            "format": "json",
+        }).encode()
+        raw = _request(
+            "https://checkurl.phishtank.com/checkurl/",
+            data=payload,
+            headers={"User-Agent": "GhostSec/1.1"},
+        )
+        reputation["phishtank"] = json.loads(raw)
+        pt = reputation["phishtank"].get("results", {})
+        if pt.get("in_database"):
+            verified = str(pt.get("verified", "")).lower() in {"y", "yes", "true"}
+            valid = str(pt.get("valid", "")).lower() in {"y", "yes", "true"}
+            online = str(pt.get("online", "")).lower() in {"y", "yes", "true"}
+            if verified and valid:
+                findings.append(
+                    "URL is listed by PhishTank as a verified, valid phishing URL."
+                )
+                score += 85
+            elif pt.get("in_database"):
+                findings.append("URL is present in the PhishTank phishing database.")
+                score += 55
+            if online:
+                findings.append("PhishTank currently reports the phishing URL as online.")
+                score += 10
+    except Exception as exc:
+        reputation["phishtank"] = {"error": str(exc)}
 
     score = min(score, 100)
     if score >= 70:
@@ -121,14 +157,18 @@ def analyze_url(url, check_urlhaus=True):
     elif score >= 35:
         verdict = "SUSPICIOUS"
     else:
-        verdict = "LOW RISK"
+        verdict = "NO KNOWN INDICATORS"
 
     return {
         "url": url,
         "verdict": verdict,
         "risk_score": score,
-        "findings": findings or ["No high-confidence indicators detected."],
-        "urlhaus": urlhaus,
+        "findings": findings or [
+            "No known indicators were returned by the configured reputation checks."
+        ],
+        "reputation": reputation,
+        # Kept for compatibility with existing consumers.
+        "urlhaus": reputation["urlhaus"],
     }
 
 
