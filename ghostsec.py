@@ -27,26 +27,29 @@ except ImportError:
     Style = DummyColor()
 
 def print_banner():
-    """Print the GhostSec cyberpunk terminal banner."""
-    logo = [
-        "   /////  //   //  //////  /////   //////  /////   //////  //////",
-        "  //      //   //  //      //  //  //      //  //  //      //",
-        " //  ///  ///////  //////  /////   //////  /////   ////    //////",
-        "//    //  //   //  //      //  //      //  //  //  //          //",
-        " /////    //   //  //////  //   // //////  //   // //////  //////",
-    ]
+    """Print a readable GhostSec cyberpunk terminal banner."""
+    letters = {
+        "G": [" GGG ", "G   G", "G    ", "G GGG", "G   G", " GGG "],
+        "H": ["H   H", "H   H", "HHHHH", "H   H", "H   H", "H   H"],
+        "O": [" OOO ", "O   O", "O   O", "O   O", "O   O", " OOO "],
+        "S": [" SSSS", "S    ", "S    ", " SSS ", "    S", "SSSS "],
+        "T": ["TTTTT", "  T  ", "  T  ", "  T  ", "  T  ", "  T  "],
+        "E": ["EEEEE", "E    ", "E    ", "EEEE ", "E    ", "EEEEE"],
+        "C": [" CCCC", "C    ", "C    ", "C    ", "C    ", " CCCC"],
+    }
+    word = "GHOSTSEC"
     print(f"{Fore.GREEN}{Style.BRIGHT}")
-    print("/" * 70)
-    print("//  [ G H O S T S E C ]  //  CYBERSECURITY AUTOMATION SYSTEM       //")
-    print("//  NODE: ZENYXSA  //  STATUS: ONLINE  //  MODE: DEFENSIVE          //")
-    print("/" * 70)
-    for line in logo:
-        print("// " + line + " //")
-    print("/" * 70)
+    print("/" * 64)
+    print("//  GHOSTSEC // CYBERSECURITY AUTOMATION SYSTEM  //")
+    print("//  NODE: ZENYXSA  //  STATUS: ONLINE  //  MODE: DEFENSIVE  //")
+    print("/" * 64)
+    for row in range(6):
+        art = " ".join(letters[char][row] for char in word)
+        print(f"///  {art}  ///")
+    print("/" * 64)
     print(f"{Fore.CYAN}{Style.BRIGHT}  >>> SCAN // ANALYZE // SECURE  |  GHOSTSEC v1.0{Style.RESET_ALL}")
     print(f"{Fore.GREEN}  [*] Python Cybersecurity Automation Tool")
     print(f"  [*] By: zenyxsa{Style.RESET_ALL}")
-
 def save_results(tool_name, data, filename):
     """Saves output to either a .txt or .json file."""
     try:
