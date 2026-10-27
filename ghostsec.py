@@ -27,19 +27,21 @@ except ImportError:
     Style = DummyColor()
 
 def print_banner():
-    """Prints the Hacker-style ASCII art banner."""
-    banner = fr"""{Fore.GREEN}{Style.BRIGHT}
-   ____ _               _   ____           
-  / ___| |__   ___  ___| |_|  _ \  ___ ___ 
- | |  _| '_ \ / _ \/ __| __| | | |/ _ / __|
- | |_| | | | | (_) \__ \ |_| |_| |  __\__ \
-  \____|_| |_|\___/|___/\__|____/ \___|___/
-                                           
-    Python Cybersecurity Automation Tool v1.0
-          By: zenyxsa
-{Style.RESET_ALL}"""
-    print(banner)
-
+    """Prints a clear GHOSTSEC ASCII banner."""
+    logo = [
+        "  GGGG  H   H  OOOO  SSSS  TTTTT  SSSS  EEEEE  CCCC ",
+        " G      H   H O    O S       T   S     E      C     ",
+        " G  GG  HHHHH O    O  SSS    T    SSS  EEEE   C     ",
+        " G   G  H   H O    O     S   T       S E      C     ",
+        "  GGGG  H   H  OOOO  SSSS    T   SSSS  EEEEE  CCCC ",
+    ]
+    print(f"{Fore.GREEN}{Style.BRIGHT}")
+    for line in logo:
+        print(line)
+    print(f"""
+        Python Cybersecurity Automation Tool v1.0
+                    By: zenyxsa
+{Style.RESET_ALL}""")
 def save_results(tool_name, data, filename):
     """Saves output to either a .txt or .json file."""
     try:
