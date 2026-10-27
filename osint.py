@@ -393,7 +393,7 @@ def normalize_phone(value, default_region="IN"):
     if not value:
         raise ValueError("Phone number cannot be empty.")
     if phonenumbers is None:
-        raise RuntimeError("The phonenumbers package is required for phone OSINT.")
+        raise RuntimeError("Phone OSINT dependency missing. From the GhostSec folder, activate your virtual environment and run: python -m pip install -r requirements.txt (or install just this dependency with: python -m pip install phonenumbers). Then restart GhostSec.")
     try:
         parsed = phonenumbers.parse(value, default_region if not value.startswith("+") else None)
     except NumberParseException as exc:
