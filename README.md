@@ -21,25 +21,56 @@
 
 ## ⚙️ Installation
 
-```bash
+Clone the repository and create a virtual environment:
+
+```sh
 git clone https://github.com/zenyxsa/ghostsec.git
 cd ghostsec
 python -m venv .venv
+```
+
+Activate the virtual environment using the command for your shell.
+
+**Bash / Zsh:**
+
+```bash
 source .venv/bin/activate
+```
+
+**Fish shell:**
+
+```fish
+source .venv/bin/activate.fish
+```
+
+Install the dependencies:
+
+```sh
 python -m pip install -r requirements.txt
 ```
+
+### Troubleshooting
+
+If Python reports `No module named pip` inside the virtual environment, try bootstrapping pip and then installing the requirements:
+
+```sh
+.venv/bin/python -m ensurepip --upgrade
+.venv/bin/python -m pip install -r requirements.txt
+```
+
+On some Linux distributions, `ensurepip` may be unavailable because of how Python is packaged. If that command fails, check your distribution's Python/venv package instructions.
 
 ## 🚀 Usage
 
 Interactive mode:
 
-```bash
+```sh
 python ghostsec.py
 ```
 
 CLI examples:
 
-```bash
+```sh
 python ghostsec.py scan 127.0.0.1
 python ghostsec.py subdomain example.com
 python ghostsec.py passwd
@@ -60,9 +91,7 @@ GhostSec includes privacy-conscious OSINT features for URL, breach-metadata, and
 
 GhostSec is intended for ethical hacking, educational purposes, defensive security research, and authorized auditing only.
 
-**Do not use GhostSec against systems, accounts, networks, or data without authorization.**
-
-The author and contributors are not responsible for damage, disruption, privacy violations, or other misuse resulting from this software. Always respect applicable laws, policies, and the privacy of others.
+**Do not use GhostSec against systems, accounts, networks, or data without authorization.** The author and contributors are not responsible for damage, disruption, privacy violations, or other misuse resulting from this software. Always respect applicable laws, policies, and the privacy of others.
 
 ---
 
