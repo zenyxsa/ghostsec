@@ -17,7 +17,8 @@
 | **Simple Log Analyzer** | Parses local .log / .txt files and highlights suspicious entries such as ERROR, FAILED, and UNAUTHORIZED. |
 | **URL Risk Detector** | Scores URLs using explainable indicators including deceptive structure, suspicious terms, raw IPs, DNS results, and reputation checks. |
 | **Breach Exposure OSINT** | Checks email/account identifiers against publicly reported breach metadata using XposedOrNot, with optional HIBP support. |
-| **Phone Number OSINT** | Locally validates and normalizes phone numbers and reports numbering metadata such as region, type, carrier, location, and time zones. |\n| **GhostSec Local AI** | Optional Ollama-powered local chat and analysis of existing JSON, text, and log reports. |
+| **Phone Number OSINT** | Locally validates and normalizes phone numbers and reports numbering metadata such as region, type, carrier, location, and time zones. |
+| **GhostSec Local AI** | Optional Ollama-powered local chat and analysis of existing JSON, text, and log reports. |
 
 ## ⚙️ Installation
 
@@ -76,7 +77,9 @@ python ghostsec.py subdomain example.com
 python ghostsec.py passwd
 python ghostsec.py sysinfo
 python ghostsec.py log example.log
-python ghostsec.py phone +91 9876543210\npython ghostsec.py ai-chat\npython ghostsec.py ai-analyze reports/scan.json\n```
+python ghostsec.py phone +91 9876543210
+python ghostsec.py ai-chat
+python ghostsec.py ai-analyze reports/scan.json\n```
 
 ## 🧠 GhostSec Local AI
 
@@ -110,6 +113,22 @@ python ghostsec.py ai-analyze reports/scan.json
 The endpoint defaults to `http://127.0.0.1:11434`. Override it with `GHOSTSEC_OLLAMA_HOST` if your local Ollama server uses another address. AI support is optional; the existing GhostSec tools continue to work without Ollama installed.
 
 The AI analyst treats report contents as untrusted data, does not execute commands or launch scans, and is intended for defensive analysis of systems you own or are authorized to assess.
+
+
+### Agent framework (developer preview)
+
+The agent framework is being developed on the `feature/ghostsec-ai-agent-core` branch. It adds:
+
+- A local Ollama-backed planner that returns a validated JSON plan.
+- Specialist prompt profiles for reconnaissance, vulnerability intelligence, OSINT, and reporting.
+- A structured Python tool registry. It does not accept arbitrary shell command strings.
+- Explicit target scope and human-confirmation checks before registered tools execute.
+
+At this stage, the planner creates plans only. No scanner tools are registered or automatically executed by the AI framework yet. Existing GhostSec scanners remain separate. The framework can be tested with:
+
+```sh
+python -m unittest discover -s tests -v
+```
 
 ## 🔎 OSINT
 
