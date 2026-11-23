@@ -2,3 +2,10 @@
 __pycache__/
 *.pyc
 *.log
+reports/
+*.db
+*.sqlite3
+*.bak-*
+.env
+.env.*
+!.env.example

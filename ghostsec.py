@@ -6,13 +6,21 @@ import re
 import argparse
 import sys
 import time
-import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 import json
 import platform
 from osint import analyze_url, breach_lookup, print_url_report, print_breach_report, phone_osint_lookup, print_phone_osint_report
 from ai_core import analyze_file as ai_analyze_file, run_chat as ai_run_chat
 from ai_core.client import OllamaError
+from ai_core import GhostSecOrchestrator, OrchestrationError, ToolContext
+from ai_core.client import OllamaClient
+from ai_core.integrations import MAX_PORT_RANGE
+from ai_core.targets import normalize_target
+from ghostsec_engine.agent_loop import run_agentic_assessment
+from ghostsec_engine.registry import build_full_registry
+from ghostsec_engine.storage import create_session, complete_session, list_sessions, get_session
+from ghostsec_engine.export import export_session
 
 # Attempt to load colorama for hacker-style colored terminal output
 try:
@@ -83,65 +91,87 @@ def check_host_up(target_ip):
         cmd = ['ping', '-c', '1', '-W', '1', target_ip]
         
     try:
-        output = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        output = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=2, shell=False, check=False)
         return output.returncode == 0
     except Exception:
         return False
 
 def port_scanner(target, start_port, end_port, save_file=None):
-    """Scans for open ports sequentially on a target using threads."""
+    """Scan a bounded TCP port range with a fixed-size worker pool."""
+    target = normalize_target(target)
+    if (
+        isinstance(start_port, bool)
+        or isinstance(end_port, bool)
+        or not isinstance(start_port, int)
+        or not isinstance(end_port, int)
+    ):
+        raise ValueError("Port numbers must be integers.")
+    if not (1 <= start_port <= 65535 and 1 <= end_port <= 65535):
+        raise ValueError("Ports must be between 1 and 65535.")
+    if end_port < start_port:
+        raise ValueError("End port must be greater than or equal to start port.")
+    port_count = end_port - start_port + 1
+    if port_count > MAX_PORT_RANGE:
+        raise ValueError("A scan is limited to {} ports.".format(MAX_PORT_RANGE))
+
     print(f"\n{Fore.YELLOW}[*] Starting Port Scan on {target} ({start_port}-{end_port})...{Style.RESET_ALL}")
-    open_ports = []
-    
+
     try:
-        target_ip = socket.gethostbyname(target)
+        resolved = socket.getaddrinfo(target, None, type=socket.SOCK_STREAM)
     except socket.gaierror:
         print(f"{Fore.RED}[!] Invalid target hostname/IP.{Style.RESET_ALL}")
-        return
+        return None
 
+    addresses = [
+        item for item in resolved
+        if item[0] in (socket.AF_INET, socket.AF_INET6)
+    ]
+    if not addresses:
+        print(f"{Fore.RED}[!] Target did not resolve to a usable IP address.{Style.RESET_ALL}")
+        return None
+
+    target_ip = addresses[0][4][0]
     print(f"{Fore.CYAN}[i] Target IP resolved: {target_ip}{Style.RESET_ALL}")
-    
+
     if not check_host_up(target_ip):
         print(f"{Fore.YELLOW}[-] Host seems down or is blocking ping packets. Proceeding anyway...{Style.RESET_ALL}")
     else:
         print(f"{Fore.GREEN}[+] Host is UP.{Style.RESET_ALL}")
-        
+
+    def scan_port(port):
+        for family, socktype, proto, _, sockaddr in addresses:
+            if family == socket.AF_INET:
+                address = (sockaddr[0], port)
+            else:
+                address = (sockaddr[0], port, sockaddr[2], sockaddr[3])
+            try:
+                with socket.socket(family, socktype, proto) as connection:
+                    connection.settimeout(0.5)
+                    if connection.connect_ex(address) == 0:
+                        return port
+            except OSError:
+                continue
+        return None
+
+    open_ports = []
     sys.stdout.write(f"{Fore.CYAN}[*] Scanning: ")
     sys.stdout.flush()
 
-    def scan_port(port):
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.settimeout(0.5) 
-            if s.connect_ex((target_ip, port)) == 0:
-                open_ports.append(port)
-            s.close()
-        except Exception:
-            pass
+    with ThreadPoolExecutor(max_workers=min(128, port_count)) as executor:
+        for index, result in enumerate(
+            executor.map(scan_port, range(start_port, end_port + 1)),
+            start=1,
+        ):
+            if result is not None:
+                open_ports.append(result)
+            if index % 20 == 0:
+                sys.stdout.write(".")
+                sys.stdout.flush()
 
-    threads = []
-    for port in range(start_port, end_port + 1):
-        t = threading.Thread(target=scan_port, args=(port,))
-        threads.append(t)
-        t.start()
-        
-        # Loading animation
-        if port % 20 == 0:
-            sys.stdout.write(".")
-            sys.stdout.flush()
-            
-        # Prevent spawning too many threads simultaneously (resource management)
-        while threading.active_count() > 150:
-            time.sleep(0.01)
-
-    # Wait for all threads to finish
-    for t in threads:
-        t.join()
-
+    open_ports.sort()
     print(f"\n\n{Fore.GREEN}[+] Port Scan Complete!{Style.RESET_ALL}")
-    
+
     if open_ports:
-        open_ports.sort()
         for port in open_ports:
             print(f"{Fore.GREEN}[+] Port {port} is OPEN{Style.RESET_ALL}")
     else:
@@ -150,8 +180,16 @@ def port_scanner(target, start_port, end_port, save_file=None):
     if save_file:
         save_results("Port Scan", {'target': target, 'open_ports': open_ports}, save_file)
 
+    return {
+        "target": target,
+        "resolved_ip": target_ip,
+        "open_ports": open_ports,
+        "scanned_range": {"start": start_port, "end": end_port},
+    }
+
 def subdomain_finder(domain, wordlist_file=None, save_file=None):
     """Finds subdomains by appending common words to the target domain and resolving."""
+    domain = normalize_target(domain, require_dot=True)
     print(f"\n{Fore.YELLOW}[*] Starting Subdomain Finder for: {domain}{Style.RESET_ALL}")
     valid_subdomains = []
     
@@ -184,6 +222,13 @@ def subdomain_finder(domain, wordlist_file=None, save_file=None):
 
     if save_file:
         save_results("Subdomain Finder", {'domain': domain, 'subdomains': valid_subdomains}, save_file)
+
+    return {
+        "domain": domain,
+        "subdomains": valid_subdomains,
+        "count": len(valid_subdomains),
+    }
+
 
 def password_strength(password):
     """Evaluates password strength based on length and character sets using RegEx."""
@@ -319,9 +364,13 @@ def interactive_menu():
         print("  7) Breach Exposure OSINT")
         print("  8) Phone Number OSINT")
         print("  9) GhostSec Local AI Analyst")
+        print(" 10) AI Security Assessment")
+        print(" 11) Assessment History")
+        print(" 12) View Saved Report")
+        print(" 13) Export Assessment Report")
         print("  0) Exit\n")
         
-        choice = input(f"{Fore.RED}zenyxsa@kali{Style.RESET_ALL}:{Fore.BLUE}~{Style.RESET_ALL}# ").strip()
+        choice = input(f"{Fore.RED}zenyxsa@arch{Style.RESET_ALL}:{Fore.BLUE}~{Style.RESET_ALL}# ").strip()
         
         if choice == '1':
             target = input("Enter target IP or hostname (e.g. 192.168.1.1): ").strip()
@@ -396,6 +445,60 @@ def interactive_menu():
             except (OllamaError, OSError, ValueError) as exc:
                 print(f"{Fore.RED}[!] AI error: {exc}{Style.RESET_ALL}")
 
+        elif choice == "10":
+            print()
+            print("[ GhostSec AI Security Assessment ]")
+            request = input("Assessment objective: ").strip()
+            target_text = input("Authorized IPs/hostnames (comma-separated): ").strip()
+            targets = tuple(dict.fromkeys(
+                part.strip() for part in target_text.split(",") if part.strip()
+            ))
+
+            if not request or not targets:
+                print("[!] An objective and at least one authorized target are required.")
+            else:
+                print("[!] Only authorize systems you own or have permission to test.")
+                try:
+                    run_ai_assessment(request, targets)
+                except (OllamaError, OrchestrationError, OSError, ValueError, RuntimeError) as exc:
+                    print(f"{Fore.RED}[!] Assessment error: {exc}{Style.RESET_ALL}")
+
+        elif choice == "11":
+            try:
+                raw_limit = input("Number of recent sessions [20]: ").strip()
+                limit = int(raw_limit) if raw_limit else 20
+                show_assessment_history(limit)
+            except (OSError, ValueError) as exc:
+                print(f"{Fore.RED}[!] History error: {exc}{Style.RESET_ALL}")
+
+        elif choice == "12":
+            try:
+                session_id = int(input("Assessment session ID: ").strip())
+                if session_id < 1:
+                    raise ValueError("Session ID must be positive.")
+                show_saved_assessment_report(session_id)
+            except (OSError, ValueError) as exc:
+                print(f"{Fore.RED}[!] Report error: {exc}{Style.RESET_ALL}")
+
+        elif choice == "13":
+            try:
+                session_id = int(input("Assessment session ID: ").strip())
+                if session_id < 1:
+                    raise ValueError("Session ID must be positive.")
+                export_format = input("Format (html/pdf/both) [html]: ").strip().lower() or "html"
+                if export_format not in ("html", "pdf", "both"):
+                    raise ValueError("Choose html, pdf, or both.")
+                output_dir = input("Output directory [reports]: ").strip() or "reports"
+                outputs = export_session(
+                    session_id,
+                    output_dir=output_dir,
+                    format=export_format,
+                )
+                for kind, output_path in outputs.items():
+                    print(f"[+] {kind.upper()} report saved: {output_path}")
+            except (OSError, ValueError, RuntimeError) as exc:
+                print(f"{Fore.RED}[!] Export error: {exc}{Style.RESET_ALL}")
+
         elif choice == '0':
             print(f"\n{Fore.GREEN}[*] Shutting down. Stay stealthy!{Style.RESET_ALL}")
             sys.exit(0)
@@ -404,6 +507,89 @@ def interactive_menu():
             print(f"{Fore.RED}[!] Command not recognized.{Style.RESET_ALL}")
             
         input(f"\n{Fore.CYAN}Press [ENTER] to return to the main menu...{Style.RESET_ALL}")
+
+def run_ai_assessment(request, authorized_targets, model=None):
+    print("\n[GHOSTSEC AI] Initializing multi-round assessment...")
+    client = OllamaClient(model=model)
+    registry = build_full_registry(port_scanner, subdomain_finder)
+    orchestrator = GhostSecOrchestrator(client=client, registry=registry)
+
+    if isinstance(authorized_targets, (str, bytes)):
+        raise ValueError("Authorized targets must be a sequence of hostnames or IP addresses.")
+    try:
+        authorized_targets = tuple(dict.fromkeys(
+            normalize_target(target) for target in authorized_targets
+        ))
+    except TypeError as exc:
+        raise ValueError("Authorized targets must be a sequence of hostnames or IP addresses.") from exc
+    if not authorized_targets:
+        raise ValueError("Explicit authorized targets are required.")
+    session_id = create_session(target=authorized_targets[0], objective=request, authorized_targets=authorized_targets)
+    print("[GHOSTSEC] Assessment history session: " + str(session_id))
+
+    try:
+        assessment = run_agentic_assessment(orchestrator=orchestrator, objective=request, authorized_targets=authorized_targets, session_id=session_id)
+    except Exception as exc:
+        complete_session(session_id=session_id, status="failed", report="Assessment failed before a final report was generated.", summary=str(exc)[:2000])
+        raise
+
+    print()
+    print("=" * 58)
+    print("GHOSTSEC AI - FINAL SECURITY ASSESSMENT")
+    print("=" * 58)
+    print("Session ID: " + str(session_id))
+    print("Status: " + str(assessment["status"]))
+    print("Rounds completed: " + str(assessment["rounds_completed"]))
+    print()
+    print(assessment["report"])
+    print()
+
+
+def show_assessment_history(limit=20):
+    sessions = list_sessions(limit=limit)
+    print("\nGHOSTSEC ASSESSMENT HISTORY")
+    print("=" * 80)
+    if not sessions:
+        print("No assessment sessions found.")
+        return
+    print("{:<6} {:<18} {:<10} {:<28} {}".format(
+        "ID", "STATUS", "RISK", "TARGET", "STARTED"
+    ))
+    for row in sessions:
+        print("{:<6} {:<18} {:<10} {:<28} {}".format(
+            row["id"], row.get("status") or "-",
+            row.get("risk_level") or "-", str(row.get("target") or "-")[:28],
+            str(row.get("started_at") or "")[:19],
+        ))
+        print("       Objective: " + str(row.get("objective") or "")[:120])
+
+
+def show_saved_assessment_report(session_id):
+    session = get_session(session_id)
+    if session is None:
+        raise ValueError("Assessment session {} was not found.".format(session_id))
+    print("\nGHOSTSEC SAVED ASSESSMENT")
+    print("=" * 68)
+    for label, key in (("Session ID", "id"), ("Status", "status"),
+                       ("Target", "target"), ("Started", "started_at"),
+                       ("Completed", "completed_at"), ("Risk", "risk_level"),
+                       ("Objective", "objective")):
+        print("{}: {}".format(label, session.get(key) or "-"))
+    print("Authorized scope: " + ", ".join(session.get("authorized_targets") or []))
+    print("\nFINAL SECURITY REPORT")
+    print("-" * 68)
+    print(session.get("report") or "No final report has been saved.")
+    for item in session.get("tool_results") or []:
+        state = "SUCCESS" if item.get("ok") else "FAILED"
+        print("Round {} | {} | {}".format(
+            item.get("round_number"), item.get("tool_name"), state
+        ))
+    for item in session.get("findings") or []:
+        print("[{}] {}".format(item.get("severity") or "unknown",
+                               item.get("name") or "Unnamed finding"))
+    for item in session.get("fixes") or []:
+        print("Remediation: " + str(item.get("remediation") or "-"))
+
 
 def main():
     parser = argparse.ArgumentParser(description="GhostSec - Python Cybersecurity Automation Tool")
@@ -462,6 +648,22 @@ def main():
     ai_analyze_parser.add_argument('file', help='Path to an existing report file')
     ai_analyze_parser.add_argument('--model', help='Ollama model name (overrides GHOSTSEC_OLLAMA_MODEL)')
 
+    ai_assess_parser = subparsers.add_parser("ai-assess", help="Plan and execute approved defensive scans")
+    ai_assess_parser.add_argument("request", help="Describe the defensive assessment")
+    ai_assess_parser.add_argument("--authorize", dest="authorized_targets", action="append", required=True, help="Explicitly authorize a hostname or IP; repeat for multiple targets")
+    ai_assess_parser.add_argument("--model", help="Ollama model name")
+
+    history_parser = subparsers.add_parser("history", help="List saved AI assessments")
+    history_parser.add_argument("--limit", type=int, default=20, help="Number of sessions to show (1-500)")
+
+    report_parser = subparsers.add_parser("report", help="Display a saved assessment report")
+    report_parser.add_argument("session_id", type=int, help="Assessment session ID")
+
+    export_parser = subparsers.add_parser("export", help="Export a saved assessment report")
+    export_parser.add_argument("session_id", type=int, help="Assessment session ID")
+    export_parser.add_argument("--format", choices=("html", "pdf", "both"), default="html", help="Output format (default: html)")
+    export_parser.add_argument("--output-dir", default="reports", help="Directory for exported reports (default: ./reports)")
+
     args = parser.parse_args()
 
     # Drop into interactive menu if no arguments are passed or -i is used
@@ -469,7 +671,46 @@ def main():
         interactive_menu()
         return
 
+    # Assessment history and saved reports.
+    if args.command == "history":
+        print_banner()
+        try:
+            show_assessment_history(args.limit)
+        except (OSError, ValueError) as exc:
+            parser.exit(1, "[!] GhostSec history: " + str(exc) + "\n")
+        return
+
+    if args.command == "report":
+        print_banner()
+        try:
+            show_saved_assessment_report(args.session_id)
+        except (OSError, ValueError) as exc:
+            parser.exit(1, "[!] GhostSec report: " + str(exc) + "\n")
+        return
+
+    if args.command == "export":
+        print_banner()
+        try:
+            outputs = export_session(
+                args.session_id,
+                output_dir=args.output_dir,
+                format=args.format,
+            )
+            for kind, output_path in outputs.items():
+                print("[+] {} report saved: {}".format(kind.upper(), output_path))
+        except (OSError, ValueError, RuntimeError) as exc:
+            parser.exit(1, "[!] GhostSec export: {}\n".format(exc))
+        return
+
     # Direct Command Line Usage
+    if args.command == "ai-assess":
+        print_banner()
+        try:
+            run_ai_assessment(args.request, args.authorized_targets, model=args.model)
+        except (OllamaError, OrchestrationError, OSError, ValueError) as exc:
+            parser.exit(1, f"[!] GhostSec AI: {exc}\n")
+        return
+
     if args.command == 'ai-chat':
         print_banner()
         try:
@@ -487,7 +728,10 @@ def main():
 
     print_banner()
     if args.command == 'scan':
-        port_scanner(args.target, args.start, args.end, args.output)
+        try:
+            port_scanner(args.target, args.start, args.end, args.output)
+        except ValueError as exc:
+            parser.exit(2, "[!] Invalid scan: " + str(exc) + "\n")
     elif args.command == 'subdomain':
         subdomain_finder(args.domain, args.wordlist, args.output)
     elif args.command == 'passwd':
