@@ -381,7 +381,7 @@ def interactive_menu():
                 print(f"{Fore.RED}[!] {exc}{Style.RESET_ALL}")
 
         elif choice == '9':
-            print("\\n[ GhostSec Local AI Analyst ]")
+            print("\n[ GhostSec Local AI Analyst ]")
             print("  1) Chat with local model")
             print("  2) Analyze an existing JSON/text/log report")
             ai_choice = input("Select option: ").strip()
@@ -390,7 +390,7 @@ def interactive_menu():
                     ai_run_chat()
                 elif ai_choice == '2':
                     report_path = input("Report file path: ").strip()
-                    print("\\n" + ai_analyze_file(report_path))
+                    print("\n" + ai_analyze_file(report_path))
                 else:
                     print("Unknown AI option.")
             except (OllamaError, OSError, ValueError) as exc:
@@ -475,14 +475,14 @@ def main():
         try:
             ai_run_chat(model=args.model)
         except OllamaError as exc:
-            parser.exit(1, f"[!] GhostSec AI: {exc}\\n")
+            parser.exit(1, f"[!] GhostSec AI: {exc}\n")
         return
     elif args.command == 'ai-analyze':
         print_banner()
         try:
             print(ai_analyze_file(args.file, model=args.model))
         except (OllamaError, OSError, ValueError) as exc:
-            parser.exit(1, f"[!] GhostSec AI: {exc}\\n")
+            parser.exit(1, f"[!] GhostSec AI: {exc}\n")
         return
 
     print_banner()
