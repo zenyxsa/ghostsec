@@ -37,6 +37,8 @@ Use it only on systems, networks, domains, accounts, and data that you own or ar
 
 The standard-library TCP scanner, SQLite database, and HTML exporter do not need those external programs. An agent tool whose executable is missing cannot complete its check.
 
+The built-in TCP scanner limits each invocation to 1,024 ports and uses a bounded worker pool. Split larger ranges into separate, deliberately reviewed scans.
+
 ## Installation
 
 Clone the repository and create a virtual environment:
@@ -200,6 +202,7 @@ The addresses in that second example are documentation-only TEST-NET addresses; 
 ### Approval and scope controls
 
 - Every target-scoped tool action must stay within the explicitly supplied `--authorize` scope.
+- Hostnames are compared case-insensitively and canonical IP notation is used; malformed numeric-looking addresses are rejected.
 - The agent displays the proposed actions and arguments for a round.
 - The user must type `YES` to approve that round. Any other response cancels the proposed round without executing its actions.
 - The loop is bounded to a maximum of nine rounds.
