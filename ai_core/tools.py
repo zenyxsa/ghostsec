@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from .targets import normalize_target
+
 
 class ToolError(RuntimeError):
     """Raised when a tool request is invalid or not authorized."""
@@ -104,9 +106,14 @@ class ToolRegistry:
 
         if spec.target_arg:
             target = arguments.get(spec.target_arg)
-            if not isinstance(target, str) or not target:
-                raise ToolError(f"A valid {spec.target_arg!r} is required.")
-            if target not in context.authorized_targets:
+            try:
+                normalized_target = normalize_target(target)
+                authorized_scope = {
+                    normalize_target(item) for item in context.authorized_targets
+                }
+            except ValueError as exc:
+                raise ToolError(str(exc)) from exc
+            if normalized_target not in authorized_scope:
                 raise ToolError(
                     "Target is not in the explicitly authorized scope."
                 )

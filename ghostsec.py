@@ -15,6 +15,7 @@ from ai_core import analyze_file as ai_analyze_file, run_chat as ai_run_chat
 from ai_core.client import OllamaError
 from ai_core import GhostSecOrchestrator, OrchestrationError, ToolContext
 from ai_core.client import OllamaClient
+from ai_core.targets import normalize_target
 from ghostsec_engine.agent_loop import run_agentic_assessment
 from ghostsec_engine.registry import build_full_registry
 from ghostsec_engine.storage import create_session, complete_session, list_sessions, get_session
@@ -490,7 +491,14 @@ def run_ai_assessment(request, authorized_targets, model=None):
     registry = build_full_registry(port_scanner, subdomain_finder)
     orchestrator = GhostSecOrchestrator(client=client, registry=registry)
 
-    authorized_targets = tuple(authorized_targets)
+    if isinstance(authorized_targets, (str, bytes)):
+        raise ValueError("Authorized targets must be a sequence of hostnames or IP addresses.")
+    try:
+        authorized_targets = tuple(dict.fromkeys(
+            normalize_target(target) for target in authorized_targets
+        ))
+    except TypeError as exc:
+        raise ValueError("Authorized targets must be a sequence of hostnames or IP addresses.") from exc
     if not authorized_targets:
         raise ValueError("Explicit authorized targets are required.")
     session_id = create_session(target=authorized_targets[0], objective=request, authorized_targets=authorized_targets)
