@@ -79,7 +79,8 @@ python ghostsec.py sysinfo
 python ghostsec.py log example.log
 python ghostsec.py phone +91 9876543210
 python ghostsec.py ai-chat
-python ghostsec.py ai-analyze reports/scan.json\n```
+python ghostsec.py ai-analyze reports/scan.json
+```
 
 ## 🧠 GhostSec Local AI
 
