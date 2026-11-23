@@ -22,6 +22,7 @@ VALID_STATUSES = {
     "cancelled",
     "failed",
     "max_rounds_reached",
+    "partial",
 }
 
 
