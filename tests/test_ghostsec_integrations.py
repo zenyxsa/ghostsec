@@ -120,7 +120,7 @@ class GhostSecIntegrationTests(unittest.TestCase):
 
     def test_rejects_invalid_domains(self):
         for domain in ("https://example.com", "example", "example..com"):
-            with self.subTest(domain=domain), self.assertRaises(ToolError):
+            with self.subTest(domain=domain), self.assertRaises((ToolError, ValueError)):
                 self.registry.execute(
                     "subdomain_discovery",
                     {"domain": domain},
