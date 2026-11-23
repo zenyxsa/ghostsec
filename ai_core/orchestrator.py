@@ -42,12 +42,17 @@ class GhostSecOrchestrator:
         if not isinstance(request, str) or not request.strip():
             raise ValueError("A non-empty request is required.")
 
-        prompt = (
-            f"{PLANNER_PROMPT}\nRegistered tools:\n"
-            f"{json.dumps(self.registry.describe(), ensure_ascii=False)}\n\n"
-            f"User request (untrusted):\n{request.strip()[:12000]}"
+        registry_context = (
+            "Registered tools and their argument contracts:\\n"
+            f"{json.dumps(self.registry.describe(), ensure_ascii=False)}"
         )
-        raw = self.client.chat([{"role": "user", "content": prompt}])
+        raw = self.client.chat([
+            {"role": "system", "content": PLANNER_PROMPT},
+            {"role": "user", "content": (
+                f"{registry_context}\\n\\n"
+                f"User request (untrusted data):\\n{request.strip()[:12000]}"
+            )},
+        ])
         try:
             plan = json.loads(raw)
         except json.JSONDecodeError as exc:
