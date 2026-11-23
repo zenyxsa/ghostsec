@@ -295,7 +295,7 @@ class AgentLoopTests(unittest.TestCase):
             orchestrator = FailedToolOrchestrator([self.make_plan(), {"summary": "No more checks", "actions": []}], response=json.dumps(structured))
             run_agentic_assessment(orchestrator, "Assess localhost", ("127.0.0.1",), approve=lambda prompt: "YES", emit=lambda message: None, session_id=session_id, db_path=db_path)
             saved = get_session(session_id, db_path=db_path)
-            self.assertEqual(saved["status"], "completed")
+            self.assertEqual(saved["status"], "partial")
             self.assertEqual(saved["risk_level"], "unknown")
             self.assertEqual(saved["findings"], [])
 

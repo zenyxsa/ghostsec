@@ -54,7 +54,7 @@ class PartialStatusTests(unittest.TestCase):
             saved = get_session(session_id, db_path=db_path)
             self.assertEqual(result["status"], "partial")
             self.assertEqual(saved["status"], "partial")
-            self.assertIsNone(saved["risk_level"])
+            self.assertEqual(saved["risk_level"], "unknown")
             self.assertIn("ASSESSMENT PARTIAL - TOOL ERRORS", saved["report"])
             self.assertFalse(saved["tool_results"][0]["ok"])
 
