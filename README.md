@@ -17,7 +17,7 @@
 | **Simple Log Analyzer** | Parses local .log / .txt files and highlights suspicious entries such as ERROR, FAILED, and UNAUTHORIZED. |
 | **URL Risk Detector** | Scores URLs using explainable indicators including deceptive structure, suspicious terms, raw IPs, DNS results, and reputation checks. |
 | **Breach Exposure OSINT** | Checks email/account identifiers against publicly reported breach metadata using XposedOrNot, with optional HIBP support. |
-| **Phone Number OSINT** | Locally validates and normalizes phone numbers and reports numbering metadata such as region, type, carrier, location, and time zones. |
+| **Phone Number OSINT** | Locally validates and normalizes phone numbers and reports numbering metadata such as region, type, carrier, location, and time zones. |\n| **GhostSec Local AI** | Optional Ollama-powered local chat and analysis of existing JSON, text, and log reports. |
 
 ## ⚙️ Installation
 
@@ -76,8 +76,40 @@ python ghostsec.py subdomain example.com
 python ghostsec.py passwd
 python ghostsec.py sysinfo
 python ghostsec.py log example.log
-python ghostsec.py phone +91 9876543210
+python ghostsec.py phone +91 9876543210\npython ghostsec.py ai-chat\npython ghostsec.py ai-analyze reports/scan.json\n```
+
+## 🧠 GhostSec Local AI
+
+GhostSec includes an optional local-first AI analyst powered by [Ollama](https://ollama.com). The AI layer uses Ollama's local HTTP API and does not require a hosted AI API key.
+
+Install and start Ollama, then download a model that fits your hardware. For example:
+
+```sh
+ollama pull qwen2.5:3b
+ollama serve
 ```
+
+Set the model (optional; defaults to `qwen2.5:3b`):
+
+```sh
+export GHOSTSEC_OLLAMA_MODEL=qwen2.5:3b
+```
+
+Start a local chat:
+
+```sh
+python ghostsec.py ai-chat
+```
+
+Analyze an existing report without executing it:
+
+```sh
+python ghostsec.py ai-analyze reports/scan.json
+```
+
+The endpoint defaults to `http://127.0.0.1:11434`. Override it with `GHOSTSEC_OLLAMA_HOST` if your local Ollama server uses another address. AI support is optional; the existing GhostSec tools continue to work without Ollama installed.
+
+The AI analyst treats report contents as untrusted data, does not execute commands or launch scans, and is intended for defensive analysis of systems you own or are authorized to assess.
 
 ## 🔎 OSINT
 
