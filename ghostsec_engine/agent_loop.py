@@ -18,7 +18,7 @@ MAX_STRUCTURED_FINDINGS = 50
 
 def _enforce_explicit_port_range(objective: str, actions: list[dict]) -> None:
     pattern = re.compile(
-        r"\bports?\s+(\d{1,5})\s*(?:-|–|—|to|through)\s*(\d{1,5})\b",
+        r"\bports?(?:\s+(?:range|from))?\s+(\d{1,5})\s*(?:-|–|—|to|through)\s*(\d{1,5})\b",
         re.IGNORECASE,
     )
     requested = {
@@ -37,14 +37,31 @@ def _enforce_explicit_port_range(objective: str, actions: list[dict]) -> None:
         raise ValueError("Objective contains an invalid port range.")
 
     for index, action in enumerate(actions, start=1):
+        if action.get("tool") == "nmap_scan":
+            raise ValueError(
+                "nmap_scan cannot honor an explicitly requested port range. "
+                "Use the bounded port_scan tool instead. No tools were executed."
+            )
         if action.get("tool") != "port_scan":
             continue
 
-        arguments = action["arguments"]
+        arguments = action.get("arguments")
+        if not isinstance(arguments, dict):
+            raise ValueError(f"Action {index} contains an invalid port range.")
+
+        def parse_port(value):
+            if isinstance(value, bool):
+                raise ValueError("boolean port value")
+            if isinstance(value, int):
+                return value
+            if isinstance(value, str) and value.isascii() and value.isdecimal():
+                return int(value)
+            raise ValueError("invalid port value")
+
         try:
             proposed = (
-                int(arguments.get("start_port")),
-                int(arguments.get("end_port")),
+                parse_port(arguments.get("start_port")),
+                parse_port(arguments.get("end_port")),
             )
         except (TypeError, ValueError):
             raise ValueError(
@@ -341,6 +358,12 @@ def _run_agentic_assessment_impl(
             else:
                 emit("[!] " + result["tool"] + " failed: " + result.get("error", "Unknown error"))
 
+    if status == "completed" and any(
+        item.get("ok") is not True for item in executed_actions
+    ):
+        status = "partial"
+        stop_reason = "One or more approved tool actions failed; the assessment is incomplete."
+
     report_messages = [
         {
             "role": "system",
@@ -427,6 +450,8 @@ def _run_agentic_assessment_impl(
         notice = "ASSESSMENT STOPPED - NO NEW ACTIONS: Duplicate actions were skipped. The available evidence may be incomplete and does not establish that the target is secure."
     elif status == "max_rounds_reached":
         notice = "ASSESSMENT INCOMPLETE - ROUND LIMIT REACHED: Results are limited to recorded checks and do not establish that the target is secure."
+    elif status == "partial":
+        notice = "ASSESSMENT PARTIAL - TOOL ERRORS: One or more approved checks failed. The report is limited to successful recorded evidence and does not establish that the target is secure."
     else:
         notice = "SCOPE LIMITATION: This report covers only the authorized targets and checks represented in the recorded evidence. A completed planning cycle or absence of findings is not proof that a target is secure."
     report = notice + "\n\n" + report

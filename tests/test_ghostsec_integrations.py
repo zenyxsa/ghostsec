@@ -106,7 +106,7 @@ class GhostSecIntegrationTests(unittest.TestCase):
     def test_rejects_url_as_port_scan_target(self):
         target = "https://lab.local"
 
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ToolError):
             self.registry.execute(
                 "port_scan",
                 {"target": target, "start_port": 1, "end_port": 80},
@@ -120,7 +120,7 @@ class GhostSecIntegrationTests(unittest.TestCase):
 
     def test_rejects_invalid_domains(self):
         for domain in ("https://example.com", "example", "example..com"):
-            with self.subTest(domain=domain), self.assertRaises(ValueError):
+            with self.subTest(domain=domain), self.assertRaises((ToolError, ValueError)):
                 self.registry.execute(
                     "subdomain_discovery",
                     {"domain": domain},

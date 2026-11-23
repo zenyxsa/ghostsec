@@ -1,36 +1,17 @@
 from __future__ import annotations
 
-import ipaddress
 import importlib
 import requests
 from typing import Any
 
 from ai_core.integrations import build_ghostsec_registry as build_base_registry
+from ai_core.targets import normalize_target
 from ai_core.tools import ToolRegistry, ToolSpec
 from .tools import run_dig, run_nikto, run_nmap, run_whatweb, run_whois
 
 
 def validate_target(target: Any) -> str:
-    if not isinstance(target, str) or not target or target != target.strip() or len(target) > 253:
-        raise ValueError("A valid hostname or IP address is required.")
-    if any(character.isspace() for character in target):
-        raise ValueError("Whitespace is not permitted in a target.")
-    if any(character in target for character in ("/", chr(92), "@", "?", "#")):
-        raise ValueError("Provide a hostname or IP address, not a URL.")
-    candidate = target.rstrip(".")
-    try:
-        ipaddress.ip_address(candidate)
-        return candidate
-    except ValueError:
-        pass
-    if not candidate or len(candidate) > 253:
-        raise ValueError("Invalid hostname.")
-    for label in candidate.split("."):
-        if not label or len(label) > 63 or label.startswith("-") or label.endswith("-"):
-            raise ValueError("Invalid hostname label.")
-        if any(not (character.isascii() and (character.isalnum() or character == "-")) for character in label):
-            raise ValueError("Invalid hostname characters.")
-    return candidate
+    return normalize_target(target)
 
 
 def run_headers(target: str) -> str:

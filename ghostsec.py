@@ -6,7 +6,7 @@ import re
 import argparse
 import sys
 import time
-import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 import json
 import platform
@@ -15,6 +15,8 @@ from ai_core import analyze_file as ai_analyze_file, run_chat as ai_run_chat
 from ai_core.client import OllamaError
 from ai_core import GhostSecOrchestrator, OrchestrationError, ToolContext
 from ai_core.client import OllamaClient
+from ai_core.integrations import MAX_PORT_RANGE
+from ai_core.targets import normalize_target
 from ghostsec_engine.agent_loop import run_agentic_assessment
 from ghostsec_engine.registry import build_full_registry
 from ghostsec_engine.storage import create_session, complete_session, list_sessions, get_session
@@ -95,59 +97,81 @@ def check_host_up(target_ip):
         return False
 
 def port_scanner(target, start_port, end_port, save_file=None):
-    """Scans for open ports sequentially on a target using threads."""
+    """Scan a bounded TCP port range with a fixed-size worker pool."""
+    target = normalize_target(target)
+    if (
+        isinstance(start_port, bool)
+        or isinstance(end_port, bool)
+        or not isinstance(start_port, int)
+        or not isinstance(end_port, int)
+    ):
+        raise ValueError("Port numbers must be integers.")
+    if not (1 <= start_port <= 65535 and 1 <= end_port <= 65535):
+        raise ValueError("Ports must be between 1 and 65535.")
+    if end_port < start_port:
+        raise ValueError("End port must be greater than or equal to start port.")
+    port_count = end_port - start_port + 1
+    if port_count > MAX_PORT_RANGE:
+        raise ValueError("A scan is limited to {} ports.".format(MAX_PORT_RANGE))
+
     print(f"\n{Fore.YELLOW}[*] Starting Port Scan on {target} ({start_port}-{end_port})...{Style.RESET_ALL}")
-    open_ports = []
-    
+
     try:
-        target_ip = socket.gethostbyname(target)
+        resolved = socket.getaddrinfo(target, None, type=socket.SOCK_STREAM)
     except socket.gaierror:
         print(f"{Fore.RED}[!] Invalid target hostname/IP.{Style.RESET_ALL}")
-        return
+        return None
 
+    addresses = [
+        item for item in resolved
+        if item[0] in (socket.AF_INET, socket.AF_INET6)
+    ]
+    if not addresses:
+        print(f"{Fore.RED}[!] Target did not resolve to a usable IP address.{Style.RESET_ALL}")
+        return None
+
+    target_ip = addresses[0][4][0]
     print(f"{Fore.CYAN}[i] Target IP resolved: {target_ip}{Style.RESET_ALL}")
-    
+
     if not check_host_up(target_ip):
         print(f"{Fore.YELLOW}[-] Host seems down or is blocking ping packets. Proceeding anyway...{Style.RESET_ALL}")
     else:
         print(f"{Fore.GREEN}[+] Host is UP.{Style.RESET_ALL}")
-        
+
+    def scan_port(port):
+        for family, socktype, proto, _, sockaddr in addresses:
+            if family == socket.AF_INET:
+                address = (sockaddr[0], port)
+            else:
+                address = (sockaddr[0], port, sockaddr[2], sockaddr[3])
+            try:
+                with socket.socket(family, socktype, proto) as connection:
+                    connection.settimeout(0.5)
+                    if connection.connect_ex(address) == 0:
+                        return port
+            except OSError:
+                continue
+        return None
+
+    open_ports = []
     sys.stdout.write(f"{Fore.CYAN}[*] Scanning: ")
     sys.stdout.flush()
 
-    def scan_port(port):
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.settimeout(0.5) 
-            if s.connect_ex((target_ip, port)) == 0:
-                open_ports.append(port)
-            s.close()
-        except Exception:
-            pass
+    with ThreadPoolExecutor(max_workers=min(128, port_count)) as executor:
+        for index, result in enumerate(
+            executor.map(scan_port, range(start_port, end_port + 1)),
+            start=1,
+        ):
+            if result is not None:
+                open_ports.append(result)
+            if index % 20 == 0:
+                sys.stdout.write(".")
+                sys.stdout.flush()
 
-    threads = []
-    for port in range(start_port, end_port + 1):
-        t = threading.Thread(target=scan_port, args=(port,))
-        threads.append(t)
-        t.start()
-        
-        # Loading animation
-        if port % 20 == 0:
-            sys.stdout.write(".")
-            sys.stdout.flush()
-            
-        # Prevent spawning too many threads simultaneously (resource management)
-        while threading.active_count() > 150:
-            time.sleep(0.01)
-
-    # Wait for all threads to finish
-    for t in threads:
-        t.join()
-
+    open_ports.sort()
     print(f"\n\n{Fore.GREEN}[+] Port Scan Complete!{Style.RESET_ALL}")
-    
+
     if open_ports:
-        open_ports.sort()
         for port in open_ports:
             print(f"{Fore.GREEN}[+] Port {port} is OPEN{Style.RESET_ALL}")
     else:
@@ -159,13 +183,13 @@ def port_scanner(target, start_port, end_port, save_file=None):
     return {
         "target": target,
         "resolved_ip": target_ip,
-        "open_ports": sorted(open_ports),
+        "open_ports": open_ports,
         "scanned_range": {"start": start_port, "end": end_port},
     }
 
-
 def subdomain_finder(domain, wordlist_file=None, save_file=None):
     """Finds subdomains by appending common words to the target domain and resolving."""
+    domain = normalize_target(domain, require_dot=True)
     print(f"\n{Fore.YELLOW}[*] Starting Subdomain Finder for: {domain}{Style.RESET_ALL}")
     valid_subdomains = []
     
@@ -490,7 +514,14 @@ def run_ai_assessment(request, authorized_targets, model=None):
     registry = build_full_registry(port_scanner, subdomain_finder)
     orchestrator = GhostSecOrchestrator(client=client, registry=registry)
 
-    authorized_targets = tuple(authorized_targets)
+    if isinstance(authorized_targets, (str, bytes)):
+        raise ValueError("Authorized targets must be a sequence of hostnames or IP addresses.")
+    try:
+        authorized_targets = tuple(dict.fromkeys(
+            normalize_target(target) for target in authorized_targets
+        ))
+    except TypeError as exc:
+        raise ValueError("Authorized targets must be a sequence of hostnames or IP addresses.") from exc
     if not authorized_targets:
         raise ValueError("Explicit authorized targets are required.")
     session_id = create_session(target=authorized_targets[0], objective=request, authorized_targets=authorized_targets)
@@ -697,7 +728,10 @@ def main():
 
     print_banner()
     if args.command == 'scan':
-        port_scanner(args.target, args.start, args.end, args.output)
+        try:
+            port_scanner(args.target, args.start, args.end, args.output)
+        except ValueError as exc:
+            parser.exit(2, "[!] Invalid scan: " + str(exc) + "\n")
     elif args.command == 'subdomain':
         subdomain_finder(args.domain, args.wordlist, args.output)
     elif args.command == 'passwd':

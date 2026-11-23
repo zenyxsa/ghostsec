@@ -1,3 +1,14 @@
+Third-party source: METATRON
+Upstream repository: https://github.com/sooryathejas/METATRON
+Upstream author: Soorya Thejas
+Upstream license: MIT
+
+GhostSec adapts selected reconnaissance tool-wrapper and public-search/page-fetch
+functionality inspired by the upstream tools.py and search.py modules. These
+components have been modified for GhostSec's registry, scope controls, error
+handling, and public-only page-fetch policy. The rest of GhostSec is maintained
+as a separate project. The upstream license text below is retained in full.
+
 MIT License
 
 Copyright (c) 2026 sooryathejas

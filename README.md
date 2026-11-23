@@ -37,6 +37,8 @@ Use it only on systems, networks, domains, accounts, and data that you own or ar
 
 The standard-library TCP scanner, SQLite database, and HTML exporter do not need those external programs. An agent tool whose executable is missing cannot complete its check.
 
+The built-in TCP scanner limits each invocation to 1,024 ports and uses a bounded worker pool. Split larger ranges into separate, deliberately reviewed scans.
+
 ## Installation
 
 Clone the repository and create a virtual environment:
@@ -61,25 +63,32 @@ source .venv/bin/activate
 source .venv/bin/activate.fish
 ```
 
-Install the required Python dependencies:
+Install GhostSec and its required Python dependencies:
 
 ```sh
 python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+python -m pip install .
+```
+
+This also installs the `ghostsec` command-line entry point. After installation, you can run it from any directory:
+
+```sh
+ghostsec --help
+ghostsec
 ```
 
 ### Optional PDF support
 
-HTML reports work with the standard library. PDF export requires ReportLab:
+HTML reports work with the standard library. PDF export requires ReportLab. Install the optional PDF extra:
+
+```sh
+python -m pip install ".[pdf]"
+```
+
+Alternatively, install the optional dependency set from the requirements file:
 
 ```sh
 python -m pip install -r requirements-optional.txt
-```
-
-Alternatively, install just ReportLab:
-
-```sh
-python -m pip install reportlab
 ```
 
 ### Troubleshooting virtual environments
@@ -200,12 +209,13 @@ The addresses in that second example are documentation-only TEST-NET addresses; 
 ### Approval and scope controls
 
 - Every target-scoped tool action must stay within the explicitly supplied `--authorize` scope.
-- The agent displays the proposed actions and arguments for a round.
+- Hostnames are compared case-insensitively and canonical IP notation is used; malformed numeric-looking addresses are rejected.
+- The agent displays the proposed actions and arguments for a round. A scanner that is missing, times out, cannot start, or exits unsuccessfully is recorded as failed; a run that ends after any such failure is marked partial rather than fully completed. Explicit port-range requests are restricted to the bounded TCP `port_scan`; Nmap is rejected when it cannot honor the requested range.
 - The user must type `YES` to approve that round. Any other response cancels the proposed round without executing its actions.
 - The loop is bounded to a maximum of nine rounds.
 - Tool output is treated as untrusted evidence, not as instructions to the model.
 - The final report is instructed to distinguish confirmed evidence from possibilities and unknowns, and not to invent scan results or vulnerabilities.
-- The public `search_intel` tool is passive and is not individually confirmation-gated in the registry. It is still included in the proposed action list, and the current agent loop asks for `YES` before executing any round that contains actions. Search requests and page fetches use the network.
+- The public `search_intel` tool is passive and is not individually confirmation-gated in the registry. It is still included in the proposed action list, and the current agent loop asks for `YES` before executing any round that contains actions. Search requests use DuckDuckGo. Page fetching is limited to public HTTP(S) hosts, pins the connection to a validated public IP, refuses redirects, and caps response size. Search results and page content remain untrusted input.
 
 Nmap, Nikto, and other network checks can generate traffic and affect remote services. Authorization and approval do not remove the need to assess operational impact before running a check.
 
@@ -295,7 +305,7 @@ tests/                         Unit and integration tests
 THIRD_PARTY_LICENSES/           Upstream license and attribution notices
 ```
 
-The agent framework combines the original GhostSec integrations with adapted tools from the MIT-licensed METATRON project. The adapted functionality is routed through GhostSec's registry and validation/approval workflow; the original arbitrary-command dispatch path is not used by the agent. See `THIRD_PARTY_LICENSES/UPSTREAM-MIT.txt` for the upstream attribution and license notice.
+The agent framework is inspired by the local-model, reconnaissance, iterative-analysis, history, and reporting workflow in [METATRON](https://github.com/sooryathejas/METATRON). GhostSec adapts selected scanner and public-search components under the upstream MIT license, but uses its own registry, target-scope validation, explicit approval, bounded execution, and SQLite persistence. It does not implement METATRON's arbitrary AI-directed command dispatch or exploit-attempt execution. The adapted tool wrappers and page-search code are hardened in GhostSec; scanner failures are recorded as failed actions, and public page fetches reject non-public destinations and redirects. See `THIRD_PARTY_LICENSES/UPSTREAM-MIT.txt` for the upstream source and license notice.
 
 ## Network use and privacy
 

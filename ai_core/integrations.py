@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any, Callable
 
+from .targets import normalize_target
 from .tools import ToolRegistry, ToolSpec
 
 
@@ -10,27 +11,7 @@ MAX_PORT_RANGE = 1024
 
 
 def _validate_hostname(value: Any, require_dot: bool = False) -> str:
-    if not isinstance(value, str) or not value or len(value) > 253:
-        raise ValueError("A valid hostname or domain is required.")
-
-    normalized = value.rstrip(".")
-
-    if not normalized or (require_dot and "." not in normalized):
-        raise ValueError("Invalid domain name.")
-
-    labels = normalized.split(".")
-
-    for label in labels:
-        if (
-            not label
-            or len(label) > 63
-            or label.startswith("-")
-            or label.endswith("-")
-            or re.fullmatch(r"[A-Za-z0-9-]+", label) is None
-        ):
-            raise ValueError("Invalid hostname or domain.")
-
-    return normalized
+    return normalize_target(value, require_dot=require_dot)
 
 
 def _validate_port_range(start_port: Any, end_port: Any) -> None:
