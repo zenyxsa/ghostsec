@@ -63,25 +63,32 @@ source .venv/bin/activate
 source .venv/bin/activate.fish
 ```
 
-Install the required Python dependencies:
+Install GhostSec and its required Python dependencies:
 
 ```sh
 python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+python -m pip install .
+```
+
+This also installs the `ghostsec` command-line entry point. After installation, you can run it from any directory:
+
+```sh
+ghostsec --help
+ghostsec
 ```
 
 ### Optional PDF support
 
-HTML reports work with the standard library. PDF export requires ReportLab:
+HTML reports work with the standard library. PDF export requires ReportLab. Install the optional PDF extra:
+
+```sh
+python -m pip install ".[pdf]"
+```
+
+Alternatively, install the optional dependency set from the requirements file:
 
 ```sh
 python -m pip install -r requirements-optional.txt
-```
-
-Alternatively, install just ReportLab:
-
-```sh
-python -m pip install reportlab
 ```
 
 ### Troubleshooting virtual environments
