@@ -67,6 +67,41 @@ class OrchestratorTests(unittest.TestCase):
         with self.assertRaises(OrchestrationError):
             GhostSecOrchestrator(client=client).plan("run something")
 
+    def test_prevalidates_all_actions_before_execution(self):
+        registry = ToolRegistry()
+        calls = []
+
+        registry.register(ToolSpec(
+            name="inventory",
+            description="Read an authorized test asset.",
+            handler=lambda target: calls.append(target) or {"target": target},
+            required_args=("target",),
+            allowed_args=("target",),
+        ))
+
+        orchestrator = GhostSecOrchestrator(
+            client=FakeClient("{}"),
+            registry=registry,
+        )
+
+        plan = {
+            "summary": "Review two assets",
+            "actions": [
+                {"tool": "inventory", "arguments": {"target": "lab.local"}},
+                {"tool": "inventory", "arguments": {"target": "outside.local"}},
+            ],
+        }
+
+        context = ToolContext(
+            authorized_targets=("lab.local",),
+            user_confirmed=True,
+        )
+
+        with self.assertRaises(OrchestrationError):
+            orchestrator.execute_approved(plan, context)
+
+        self.assertEqual(calls, [])
+
     def test_agents_expose_distinct_prompts(self):
         agents = [ReconAgent(), VulnerabilityAgent(), OSINTAgent(), ReportAgent()]
         prompts = [agent.system_prompt() for agent in agents]

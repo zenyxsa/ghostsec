@@ -76,7 +76,7 @@ class GhostSecOrchestrator:
                 raise OrchestrationError("Each action must contain only tool and arguments.")
             tool = action["tool"]
             args = action["arguments"]
-            if tool not in registered:
+            if not isinstance(tool, str) or tool not in registered:
                 raise OrchestrationError(f"Model proposed an unregistered tool: {tool!r}")
             if not isinstance(args, dict):
                 raise OrchestrationError("Tool arguments must be a JSON object.")
@@ -92,16 +92,54 @@ class GhostSecOrchestrator:
     def execute_approved(
         self, plan: dict[str, Any], context: ToolContext
     ) -> list[dict[str, Any]]:
-        """Execute a previously reviewed plan; registry enforces scope and confirmation."""
-        if not isinstance(plan, dict) or not isinstance(plan.get("actions"), list):
-            raise ValueError("A validated plan is required.")
-        results = []
-        for action in plan["actions"]:
+        """Validate the entire plan before executing any tool."""
+        if not isinstance(plan, dict) or set(plan) != {"summary", "actions"}:
+            raise OrchestrationError("A validated plan is required.")
+
+        summary = plan["summary"]
+        actions = plan["actions"]
+
+        if not isinstance(summary, str) or len(summary) > 2000:
+            raise OrchestrationError("The plan summary is invalid.")
+        if not isinstance(actions, list) or len(actions) > 8:
+            raise OrchestrationError("The plan must contain at most 8 actions.")
+        if not isinstance(context, ToolContext):
+            raise OrchestrationError("A valid approval context is required.")
+
+        validated_actions = []
+
+        # Validate every action before allowing the first one to execute.
+        for index, action in enumerate(actions, start=1):
+            if not isinstance(action, dict) or set(action) != {"tool", "arguments"}:
+                raise OrchestrationError(
+                    f"Action {index} must contain only tool and arguments."
+                )
+
             name = action["tool"]
+            arguments = action["arguments"]
+
+            if not isinstance(name, str):
+                raise OrchestrationError(f"Action {index} has an invalid tool name.")
+            if not isinstance(arguments, dict):
+                raise OrchestrationError(f"Action {index} arguments must be an object.")
+
             try:
-                result = self.registry.execute(name, action["arguments"], context)
+                self.registry.validate(name, arguments, context)
+            except Exception as exc:
+                raise OrchestrationError(
+                    f"Action {index} failed pre-execution validation: {exc}"
+                ) from exc
+
+            validated_actions.append((name, arguments))
+
+        results = []
+
+        for name, arguments in validated_actions:
+            try:
+                result = self.registry.execute(name, arguments, context)
                 results.append({"tool": name, "ok": True, "result": result})
             except Exception as exc:
                 results.append({"tool": name, "ok": False, "error": str(exc)})
                 break
+
         return results
