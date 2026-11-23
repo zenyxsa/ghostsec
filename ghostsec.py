@@ -11,6 +11,8 @@ from datetime import datetime
 import json
 import platform
 from osint import analyze_url, breach_lookup, print_url_report, print_breach_report, phone_osint_lookup, print_phone_osint_report
+from ai_core import analyze_file as ai_analyze_file, run_chat as ai_run_chat
+from ai_core.client import OllamaError
 
 # Attempt to load colorama for hacker-style colored terminal output
 try:
@@ -316,6 +318,7 @@ def interactive_menu():
         print("  6) URL Risk Detector")
         print("  7) Breach Exposure OSINT")
         print("  8) Phone Number OSINT")
+        print("  9) GhostSec Local AI Analyst")
         print("  0) Exit\n")
         
         choice = input(f"{Fore.RED}zenyxsa@kali{Style.RESET_ALL}:{Fore.BLUE}~{Style.RESET_ALL}# ").strip()
@@ -377,6 +380,22 @@ def interactive_menu():
             except (ValueError, RuntimeError) as exc:
                 print(f"{Fore.RED}[!] {exc}{Style.RESET_ALL}")
 
+        elif choice == '9':
+            print("\\n[ GhostSec Local AI Analyst ]")
+            print("  1) Chat with local model")
+            print("  2) Analyze an existing JSON/text/log report")
+            ai_choice = input("Select option: ").strip()
+            try:
+                if ai_choice == '1':
+                    ai_run_chat()
+                elif ai_choice == '2':
+                    report_path = input("Report file path: ").strip()
+                    print("\\n" + ai_analyze_file(report_path))
+                else:
+                    print("Unknown AI option.")
+            except (OllamaError, OSError, ValueError) as exc:
+                print(f"{Fore.RED}[!] AI error: {exc}{Style.RESET_ALL}")
+
         elif choice == '0':
             print(f"\n{Fore.GREEN}[*] Shutting down. Stay stealthy!{Style.RESET_ALL}")
             sys.exit(0)
@@ -435,6 +454,14 @@ def main():
     phone_parser.add_argument('--region', default='IN', help='Default region when +country code is omitted')
     phone_parser.add_argument('-o', '--output', help='Save output (supports .txt or .json)')
 
+    # Local AI commands. These communicate only with the configured Ollama endpoint.
+    ai_chat_parser = subparsers.add_parser('ai-chat', help='Chat with the local Ollama model')
+    ai_chat_parser.add_argument('--model', help='Ollama model name (overrides GHOSTSEC_OLLAMA_MODEL)')
+
+    ai_analyze_parser = subparsers.add_parser('ai-analyze', help='Analyze an existing local JSON/text/log report')
+    ai_analyze_parser.add_argument('file', help='Path to an existing report file')
+    ai_analyze_parser.add_argument('--model', help='Ollama model name (overrides GHOSTSEC_OLLAMA_MODEL)')
+
     args = parser.parse_args()
 
     # Drop into interactive menu if no arguments are passed or -i is used
@@ -443,6 +470,21 @@ def main():
         return
 
     # Direct Command Line Usage
+    if args.command == 'ai-chat':
+        print_banner()
+        try:
+            ai_run_chat(model=args.model)
+        except OllamaError as exc:
+            parser.exit(1, f"[!] GhostSec AI: {exc}\\n")
+        return
+    elif args.command == 'ai-analyze':
+        print_banner()
+        try:
+            print(ai_analyze_file(args.file, model=args.model))
+        except (OllamaError, OSError, ValueError) as exc:
+            parser.exit(1, f"[!] GhostSec AI: {exc}\\n")
+        return
+
     print_banner()
     if args.command == 'scan':
         port_scanner(args.target, args.start, args.end, args.output)
