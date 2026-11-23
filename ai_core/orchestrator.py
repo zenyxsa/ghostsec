@@ -43,14 +43,14 @@ class GhostSecOrchestrator:
             raise ValueError("A non-empty request is required.")
 
         registry_context = (
-            "Registered tools and their argument contracts:\\n"
+            "Registered tools and their argument contracts:\n"
             f"{json.dumps(self.registry.describe(), ensure_ascii=False)}"
         )
         raw = self.client.chat([
             {"role": "system", "content": PLANNER_PROMPT},
             {"role": "user", "content": (
-                f"{registry_context}\\n\\n"
-                f"User request (untrusted data):\\n{request.strip()[:12000]}"
+                f"{registry_context}\n\n"
+                f"User request (untrusted data):\n{request.strip()[:12000]}"
             )},
         ])
         try:
@@ -63,6 +63,11 @@ class GhostSecOrchestrator:
         actions = plan.get("actions")
         if not isinstance(actions, list):
             raise OrchestrationError("The plan must contain an actions array.")
+
+        if len(actions) > 8:
+            raise OrchestrationError("A plan may contain at most 8 actions.")
+        if len(plan["summary"]) > 2000:
+            raise OrchestrationError("The plan summary is too long.")
 
         registered = {item["name"]: item for item in self.registry.describe()}
         validated = []
